@@ -1,11 +1,17 @@
+export const TIME_PATTERN = /^\d+:\d{2}\.\d{2}$/;
+
 export function formatTime(ms: number): string {
-  if (!isFinite(ms) || ms < 0) ms = 0;
+  if (typeof ms !== "number" || !isFinite(ms) || ms < 0) ms = 0;
   const totalCs = Math.floor(ms / 10);
   const cs = totalCs % 100;
   const totalSec = Math.floor(totalCs / 100);
   const sec = totalSec % 60;
   const min = Math.floor(totalSec / 60);
   return `${min}:${sec.toString().padStart(2, "0")}.${cs.toString().padStart(2, "0")}`;
+}
+
+export function isValidFormatted(s: string): boolean {
+  return TIME_PATTERN.test(s);
 }
 
 export function average(times: number[]): number | null {
