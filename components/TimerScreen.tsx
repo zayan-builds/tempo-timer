@@ -1,0 +1,486 @@
+"use client";
+import { AnimatePresence, motion } from "framer-motion";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Bloom } from "./Bloom";
+import { TimerDisplay } from "./TimerDisplay";
+import { Info } from "./Info";
+import { Settings } from "./Settings";
+import { History } from "./History";
+import { PinPad } from "./PinPad";
+import { generateScramble } from "@/lib/scramble";
+import { formatTime } from "@/lib/format";
+import { avgOfN, useHistory } from "@/hooks/useHistory";
+import { useSettings } from "@/lib/settings";
+import { sounds, unlockAudio } from "@/lib/sound";
+import { verifyBiometric, verifyPin } from "@/lib/auth";
+
+type State = "idle" | "armed" | "running" | "stopped" | "pb";
+
+function startOfDay(ts: number): number {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+export function TimerScreen() {
+  const { settings, accentHex } = useSettings();
+  const { solves, addSolve } = useHistory();
+
+  const [state, setState] = useState<State>("idle");
+  const [scramble, setScramble] = useState<string>("");
+  const [displayMs, setDisplayMs] = useState<number>(0);
+  const [lastSolveMs, setLastSolveMs] = useState<number | null>(null);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [pinVerifyOpen, setPinVerifyOpen] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  const startedAtRef = useRef<number>(0);
+  const rafRef = useRef<number | null>(null);
+  const holdTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stateRef = useRef<State>("idle");
+  const scrambleRef = useRef<string>("");
+  const overlayOpenRef = useRef(false);
+  const pressStartYRef = useRef<number | null>(null);
+  const swipeTriggeredRef = useRef(false);
+  const newSessionPlayedRef = useRef(false);
+
+  useEffect(() => { stateRef.current = state; }, [state]);
+  useEffect(() => { scrambleRef.current = scramble; }, [scramble]);
+  useEffect(() => {
+    overlayOpenRef.current = infoOpen || settingsOpen || historyOpen || pinVerifyOpen;
+  }, [infoOpen, settingsOpen, historyOpen, pinVerifyOpen]);
+
+  useEffect(() => {
+    if (settings.proMode && !scramble) setScramble(generateScramble());
+  }, [settings.proMode, scramble]);
+
+  const hasSolveToday = useMemo(() => {
+    const today = startOfDay(Date.now());
+    return solves.some((s) => s.timestamp >= today);
+  }, [solves]);
+
+  const feedback = useCallback(
+    (kind: "armed" | "start" | "stop" | "pb") => {
+      if (!settings.haptics) return;
+      if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+        try {
+          const patterns: Record<typeof kind, number | number[]> = {
+            armed: 40,
+            start: 20,
+            stop: [30, 10, 30],
+            pb: [50, 30, 50, 30, 100],
+          };
+          navigator.vibrate(patterns[kind]);
+        } catch {}
+      }
+      sounds[kind]();
+    },
+    [settings.haptics],
+  );
+
+  const stopRaf = () => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  };
+
+  const tick = useCallback(() => {
+    setDisplayMs(performance.now() - startedAtRef.current);
+    rafRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  const beginRunning = useCallback(() => {
+    if (!hasSolveToday && solves.length > 0 && settings.haptics && !newSessionPlayedRef.current) {
+      sounds.newSession();
+      newSessionPlayedRef.current = true;
+    }
+    startedAtRef.current = performance.now();
+    setDisplayMs(0);
+    setState("running");
+    feedback("start");
+    rafRef.current = requestAnimationFrame(tick);
+  }, [tick, feedback, hasSolveToday, solves.length, settings.haptics]);
+
+  const stopRunning = useCallback(() => {
+    stopRaf();
+    const elapsed = performance.now() - startedAtRef.current;
+    setDisplayMs(elapsed);
+    const result = addSolve(elapsed, scrambleRef.current);
+    setLastSolveMs(elapsed);
+    if (result.isPB) {
+      setState("pb");
+      feedback("pb");
+    } else {
+      setState("stopped");
+      feedback("stop");
+    }
+    if (settings.proMode) setScramble(generateScramble());
+  }, [addSolve, settings.proMode, feedback]);
+
+  const armHold = useCallback(() => {
+    if (stateRef.current === "running" || stateRef.current === "armed") return;
+    if (holdTimeoutRef.current) clearTimeout(holdTimeoutRef.current);
+    holdTimeoutRef.current = setTimeout(() => {
+      setState("armed");
+      setDisplayMs(0);
+      feedback("armed");
+    }, settings.holdMs);
+  }, [settings.holdMs, feedback]);
+
+  const cancelHold = useCallback(() => {
+    if (holdTimeoutRef.current) {
+      clearTimeout(holdTimeoutRef.current);
+      holdTimeoutRef.current = null;
+    }
+  }, []);
+
+  const openHistoryGated = useCallback(async () => {
+    if (!settings.lockHistory) {
+      setHistoryOpen(true);
+      return;
+    }
+    if (settings.lockMethod === "biometric") {
+      const ok = await verifyBiometric();
+      if (ok) setHistoryOpen(true);
+      else {
+        setAuthError("authentication required");
+        setTimeout(() => setAuthError(null), 1800);
+      }
+      return;
+    }
+    if (settings.lockMethod === "pin") {
+      setPinVerifyOpen(true);
+      return;
+    }
+    setHistoryOpen(true);
+  }, [settings.lockHistory, settings.lockMethod]);
+
+  const onPress = useCallback(
+    (e: React.PointerEvent) => {
+      if (overlayOpenRef.current) return;
+      e.preventDefault();
+      unlockAudio();
+      pressStartYRef.current = e.clientY;
+      swipeTriggeredRef.current = false;
+      if (stateRef.current === "running") {
+        stopRunning();
+        return;
+      }
+      armHold();
+    },
+    [armHold, stopRunning],
+  );
+
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (overlayOpenRef.current) return;
+      const startY = pressStartYRef.current;
+      if (startY === null || swipeTriggeredRef.current) return;
+      if (stateRef.current === "running" || stateRef.current === "armed") return;
+      const dy = startY - e.clientY;
+      if (dy > 80) {
+        swipeTriggeredRef.current = true;
+        cancelHold();
+        pressStartYRef.current = null;
+        void openHistoryGated();
+      }
+    },
+    [cancelHold, openHistoryGated],
+  );
+
+  const onRelease = useCallback(
+    (e: React.PointerEvent) => {
+      if (overlayOpenRef.current) return;
+      e.preventDefault();
+      pressStartYRef.current = null;
+      cancelHold();
+      if (swipeTriggeredRef.current) {
+        swipeTriggeredRef.current = false;
+        return;
+      }
+      if (stateRef.current === "armed") beginRunning();
+    },
+    [cancelHold, beginRunning],
+  );
+
+  useEffect(
+    () => () => {
+      stopRaf();
+      if (holdTimeoutRef.current) clearTimeout(holdTimeoutRef.current);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (overlayOpenRef.current) return;
+      if (e.code !== "Space" || e.repeat) return;
+      e.preventDefault();
+      if (stateRef.current === "running") {
+        stopRunning();
+        return;
+      }
+      armHold();
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (overlayOpenRef.current) return;
+      if (e.code !== "Space") return;
+      e.preventDefault();
+      cancelHold();
+      if (stateRef.current === "armed") beginRunning();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [armHold, beginRunning, cancelHold, stopRunning]);
+
+  const ao5 = avgOfN(solves, 5);
+  const ao12 = avgOfN(solves, 12);
+
+  const statsVisible = settings.proMode && state !== "running";
+  const scrambleVisible = settings.proMode && !!scramble;
+  const scrambleOpacity = state === "running" ? 0.18 : 0.6;
+  const pbFlash = state === "pb";
+  const chevronVisible = state !== "running" && state !== "armed";
+
+  return (
+    <main
+      className="relative w-full bg-black overflow-hidden touch-none select-none"
+      style={{ WebkitUserSelect: "none", height: "100dvh", minHeight: "100dvh" }}
+    >
+      <Bloom state={state} accentHex={accentHex} />
+
+      <AnimatePresence>
+        {pbFlash && (
+          <motion.div
+            key="pb-flash"
+            aria-hidden
+            className="fixed inset-0 pointer-events-none"
+            style={{ background: accentHex, zIndex: 2 }}
+            initial={{ opacity: 0.2 }}
+            animate={{ opacity: 0 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+          />
+        )}
+      </AnimatePresence>
+
+      <button
+        aria-label="info"
+        onClick={() => setInfoOpen(true)}
+        className="absolute font-mono"
+        style={{
+          top: 18, left: 20, zIndex: 30,
+          color: "#F5F0E8", opacity: 0.55, fontSize: 14,
+          background: "transparent", border: "none", cursor: "pointer",
+          width: 32, height: 32, padding: 0,
+        }}
+      >
+        ?
+      </button>
+
+      <button
+        aria-label="settings"
+        onClick={() => setSettingsOpen(true)}
+        className="absolute"
+        style={{
+          top: 18, right: 20, zIndex: 30,
+          opacity: 0.55, background: "transparent", border: "none", cursor: "pointer",
+          width: 32, height: 32, padding: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F5F0E8" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+      </button>
+
+      {scrambleVisible && (
+        <motion.div
+          className="absolute left-0 right-0 flex justify-center px-12"
+          style={{ top: 56, zIndex: 5 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: scrambleOpacity }}
+          transition={{ duration: 0.4 }}
+        >
+          <span
+            className="font-mono text-center"
+            style={{ color: accentHex, fontSize: 12, letterSpacing: "0.08em" }}
+          >
+            {scramble}
+          </span>
+        </motion.div>
+      )}
+
+      <div
+        className="absolute left-0 right-0 flex flex-col items-center justify-center"
+        style={{
+          top: "45%",
+          transform: "translateY(-50%)",
+          zIndex: 5,
+          paddingLeft: 24,
+          paddingRight: 24,
+        }}
+      >
+        <TimerDisplay ms={displayMs} state={state} accentHex={accentHex} />
+        <AnimatePresence>
+          {state === "pb" && (
+            <motion.div
+              key="pb-label"
+              className="font-mono"
+              style={{ color: accentHex, fontSize: 10, letterSpacing: "0.3em", marginTop: 28 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.6 }}
+            >
+              new best
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Bottom strip */}
+      <div
+        className="absolute left-0 right-0 px-8 flex justify-center items-center font-mono"
+        style={{
+          bottom: "5%",
+          color: "#F5F0E8",
+          fontSize: 11,
+          letterSpacing: "0.08em",
+          zIndex: 5,
+          minHeight: 16,
+        }}
+      >
+        <AnimatePresence mode="wait">
+          {statsVisible && lastSolveMs !== null && (
+            <motion.div
+              key="bottom-row"
+              className="w-full flex justify-between items-center"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.55 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <span style={{ minWidth: 80 }}>{ao5 !== null ? `ao5  ${formatTime(ao5)}` : ""}</span>
+              <span>{formatTime(lastSolveMs)}</span>
+              <span style={{ minWidth: 80, textAlign: "right" }}>{ao12 !== null ? `ao12 ${formatTime(ao12)}` : ""}</span>
+            </motion.div>
+          )}
+          {!statsVisible && lastSolveMs !== null && state !== "running" && (
+            <motion.div
+              key="bottom-last"
+              className="flex flex-col items-center"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <span style={{ color: "#F5F0E8", opacity: 0.3, fontSize: 10, letterSpacing: "0.3em", marginBottom: 6 }}>
+                last solve
+              </span>
+              <span style={{ color: "#F5F0E8", opacity: 0.7, fontSize: 13, letterSpacing: "0.08em" }}>
+                {formatTime(lastSolveMs)}
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Chevron — opens history */}
+      <AnimatePresence>
+        {chevronVisible && (
+          <motion.button
+            key="history-chevron"
+            aria-label="history"
+            onClick={() => void openHistoryGated()}
+            className="absolute"
+            style={{
+              left: "50%",
+              bottom: 14,
+              transform: "translateX(-50%)",
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              padding: 8,
+              zIndex: 25,
+              opacity: 0.4,
+            }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.4 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.4 }}
+          >
+            <svg width="22" height="14" viewBox="0 0 22 14" fill="none" stroke="#F5F0E8" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 10 11 4 19 10" />
+            </svg>
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      {/* Auth error toast */}
+      <AnimatePresence>
+        {authError && (
+          <motion.div
+            key="auth-error"
+            className="absolute left-0 right-0 flex justify-center font-mono"
+            style={{ bottom: 80, zIndex: 30, color: accentHex, fontSize: 10, letterSpacing: "0.3em" }}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.25 }}
+          >
+            {authError}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Touch zone */}
+      <div
+        className="absolute left-0 right-0 bottom-0"
+        style={{ height: "65%", zIndex: 10 }}
+        onPointerDown={onPress}
+        onPointerMove={onPointerMove}
+        onPointerUp={onRelease}
+        onPointerCancel={onRelease}
+        onPointerLeave={(e) => {
+          if (stateRef.current === "armed" || holdTimeoutRef.current) onRelease(e);
+        }}
+        onContextMenu={(e) => e.preventDefault()}
+      />
+
+      <Info open={infoOpen} onClose={() => setInfoOpen(false)} accentHex={accentHex} />
+      <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <History
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        solves={solves}
+        accentHex={accentHex}
+      />
+
+      {pinVerifyOpen && (
+        <PinPad
+          mode="verify"
+          accentHex={accentHex}
+          title="enter pin to view history"
+          onCancel={() => setPinVerifyOpen(false)}
+          onSubmit={async (pin) => {
+            const ok = await verifyPin(pin);
+            if (ok) {
+              setPinVerifyOpen(false);
+              setHistoryOpen(true);
+              return true;
+            }
+            return false;
+          }}
+        />
+      )}
+    </main>
+  );
+}
