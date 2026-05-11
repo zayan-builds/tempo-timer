@@ -231,7 +231,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     marginBottom: 14,
                   }}
                 >
-                  open source · built by zayan
+                  open source · MIT · built by zayan
                 </p>
                 <a
                   href="https://github.com/zayan-builds/tempo-timer"

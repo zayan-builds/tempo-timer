@@ -5,14 +5,21 @@ import { Bloom } from "./Bloom";
 import { TimerDisplay } from "./TimerDisplay";
 import { Info } from "./Info";
 import { Settings } from "./Settings";
-import { History } from "./History";
-import { PinPad } from "./PinPad";
+import dynamic from "next/dynamic";
+
+const History = dynamic(() => import("./History").then((m) => ({ default: m.History })), {
+  ssr: false,
+});
+const PinPad = dynamic(() => import("./PinPad").then((m) => ({ default: m.PinPad })), {
+  ssr: false,
+});
 import { generateScramble } from "@/lib/scramble";
 import { formatTime } from "@/lib/format";
 import { avgOfN, useHistory } from "@/hooks/useHistory";
 import { useSettings } from "@/lib/settings";
 import { sounds, unlockAudio } from "@/lib/sound";
 import { verifyBiometric, verifyPin } from "@/lib/auth";
+import { getComparison } from "@/lib/comparison";
 
 type State = "idle" | "armed" | "running" | "stopped" | "pb";
 
@@ -24,7 +31,7 @@ function startOfDay(ts: number): number {
 
 export function TimerScreen() {
   const { settings, accentHex } = useSettings();
-  const { solves, addSolve } = useHistory();
+  const { solves, addSolve, deleteSolve } = useHistory();
 
   const [state, setState] = useState<State>("idle");
   const [scramble, setScramble] = useState<string>("");
@@ -35,6 +42,9 @@ export function TimerScreen() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [pinVerifyOpen, setPinVerifyOpen] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [comparison, setComparison] = useState<string | null>(null);
+  const [chevronFlash, setChevronFlash] = useState(false);
+  const [pinFailCount, setPinFailCount] = useState(0);
 
   const startedAtRef = useRef<number>(0);
   const rafRef = useRef<number | null>(null);
@@ -45,6 +55,30 @@ export function TimerScreen() {
   const pressStartYRef = useRef<number | null>(null);
   const swipeTriggeredRef = useRef(false);
   const newSessionPlayedRef = useRef(false);
+  const comparisonShowRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const comparisonHideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearComparisonTimers = useCallback(() => {
+    if (comparisonShowRef.current) {
+      clearTimeout(comparisonShowRef.current);
+      comparisonShowRef.current = null;
+    }
+    if (comparisonHideRef.current) {
+      clearTimeout(comparisonHideRef.current);
+      comparisonHideRef.current = null;
+    }
+  }, []);
+
+  const scheduleComparison = useCallback((elapsedMs: number, isPB: boolean) => {
+    clearComparisonTimers();
+    setComparison(null);
+    const showDelay = isPB ? 800 : 500;
+    comparisonShowRef.current = setTimeout(() => {
+      setComparison(getComparison(elapsedMs / 1000));
+      // visible window: 400ms fade-in + 2000ms hold, then unmount triggers 600ms fade-out
+      comparisonHideRef.current = setTimeout(() => setComparison(null), 2400);
+    }, showDelay);
+  }, [clearComparisonTimers]);
 
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { scrambleRef.current = scramble; }, [scramble]);
@@ -117,8 +151,9 @@ export function TimerScreen() {
       setState("stopped");
       feedback("stop");
     }
+    scheduleComparison(elapsed, result.isPB);
     if (settings.proMode) setScramble(generateScramble());
-  }, [addSolve, settings.proMode, feedback]);
+  }, [addSolve, settings.proMode, feedback, scheduleComparison]);
 
   const armHold = useCallback(() => {
     if (stateRef.current === "running" || stateRef.current === "armed") return;
@@ -126,9 +161,11 @@ export function TimerScreen() {
     holdTimeoutRef.current = setTimeout(() => {
       setState("armed");
       setDisplayMs(0);
+      clearComparisonTimers();
+      setComparison(null);
       feedback("armed");
     }, settings.holdMs);
-  }, [settings.holdMs, feedback]);
+  }, [settings.holdMs, feedback, clearComparisonTimers]);
 
   const cancelHold = useCallback(() => {
     if (holdTimeoutRef.current) {
@@ -142,16 +179,16 @@ export function TimerScreen() {
       setHistoryOpen(true);
       return;
     }
+    setChevronFlash(true);
+    setTimeout(() => setChevronFlash(false), 200);
     if (settings.lockMethod === "biometric") {
       const ok = await verifyBiometric();
       if (ok) setHistoryOpen(true);
-      else {
-        setAuthError("authentication required");
-        setTimeout(() => setAuthError(null), 1800);
-      }
+      // No error on biometric cancel/fail per polish spec
       return;
     }
     if (settings.lockMethod === "pin") {
+      setPinFailCount(0);
       setPinVerifyOpen(true);
       return;
     }
@@ -210,8 +247,9 @@ export function TimerScreen() {
     () => () => {
       stopRaf();
       if (holdTimeoutRef.current) clearTimeout(holdTimeoutRef.current);
+      clearComparisonTimers();
     },
-    [],
+    [clearComparisonTimers],
   );
 
   useEffect(() => {
@@ -344,6 +382,27 @@ export function TimerScreen() {
             </motion.div>
           )}
         </AnimatePresence>
+        <AnimatePresence>
+          {comparison && state !== "running" && state !== "armed" && (
+            <motion.div
+              key={`cmp-${comparison}`}
+              className="font-mono italic text-center"
+              style={{
+                color: accentHex,
+                fontSize: 12,
+                letterSpacing: "0.05em",
+                marginTop: state === "pb" ? 18 : 28,
+                paddingLeft: 16,
+                paddingRight: 16,
+              }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1, transition: { duration: 0.4, ease: "easeOut" } }}
+              exit={{ opacity: 0, transition: { duration: 0.6, ease: "easeIn" } }}
+            >
+              {comparison}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Bottom strip */}
@@ -410,14 +469,13 @@ export function TimerScreen() {
               cursor: "pointer",
               padding: 8,
               zIndex: 25,
-              opacity: 0.4,
             }}
             initial={{ opacity: 0 }}
-            animate={{ opacity: 0.4 }}
+            animate={{ opacity: chevronFlash ? 1 : 0.4 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.4 }}
+            transition={{ duration: chevronFlash ? 0.18 : 0.4 }}
           >
-            <svg width="22" height="14" viewBox="0 0 22 14" fill="none" stroke="#F5F0E8" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="22" height="14" viewBox="0 0 22 14" fill="none" stroke={chevronFlash ? accentHex : "#F5F0E8"} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="3 10 11 4 19 10" />
             </svg>
           </motion.button>
@@ -461,6 +519,7 @@ export function TimerScreen() {
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
         solves={solves}
+        onDelete={deleteSolve}
         accentHex={accentHex}
       />
 
@@ -474,8 +533,17 @@ export function TimerScreen() {
             const ok = await verifyPin(pin);
             if (ok) {
               setPinVerifyOpen(false);
+              setPinFailCount(0);
               setHistoryOpen(true);
               return true;
+            }
+            const next = pinFailCount + 1;
+            setPinFailCount(next);
+            if (next >= 3) {
+              setPinVerifyOpen(false);
+              setPinFailCount(0);
+              setAuthError("try again later");
+              setTimeout(() => setAuthError(null), 2000);
             }
             return false;
           }}
