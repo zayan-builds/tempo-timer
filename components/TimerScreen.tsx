@@ -20,6 +20,7 @@ import { useSettings } from "@/lib/settings";
 import { sounds, unlockAudio } from "@/lib/sound";
 import { verifyBiometric, verifyPin } from "@/lib/auth";
 import { getComparison } from "@/lib/comparison";
+import { triggerHaptic } from "@/lib/haptics";
 
 type State = "idle" | "armed" | "running" | "stopped" | "pb";
 
@@ -126,17 +127,7 @@ export function TimerScreen() {
   const feedback = useCallback(
     (kind: "armed" | "start" | "stop" | "pb") => {
       if (!settings.haptics) return;
-      if (typeof navigator !== "undefined" && "vibrate" in navigator) {
-        try {
-          const patterns: Record<typeof kind, number | number[]> = {
-            armed: [15, 10, 15],
-            start: 8,
-            stop: [20, 15, 40],
-            pb: [10, 8, 10, 8, 10, 8, 60],
-          };
-          navigator.vibrate(patterns[kind]);
-        } catch {}
-      }
+      void triggerHaptic(kind);
       sounds[kind]();
     },
     [settings.haptics],

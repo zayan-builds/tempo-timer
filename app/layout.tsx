@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Cormorant_Garamond, JetBrains_Mono } from "next/font/google";
 import { SettingsProvider } from "@/lib/settings";
+import { UpdaterBoot } from "@/components/UpdaterBoot";
 import "./globals.css";
 
 const cormorant = Cormorant_Garamond({
@@ -61,7 +62,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${cormorant.variable} ${jetbrains.variable}`}>
       <body className={cormorant.className}>
-        <SettingsProvider>{children}</SettingsProvider>
+        <SettingsProvider>
+          <UpdaterBoot />
+          {children}
+        </SettingsProvider>
       </body>
     </html>
   );
