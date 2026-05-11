@@ -1,5 +1,5 @@
 "use client";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, PanInfo } from "framer-motion";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Solve } from "@/hooks/useHistory";
 import { formatTime } from "@/lib/format";
@@ -11,10 +11,14 @@ type Props = {
   onClose: () => void;
   solves: Solve[];
   onDelete: (id: string) => void;
+  onClearAll: () => void;
   accentHex: string;
 };
 
 type Group = { label: string; items: Solve[] };
+
+const DELETE_WIDTH = 72;
+const DELETE_RED = "#C0392B";
 
 function startOfDay(ts: number): number {
   const d = new Date(ts);
@@ -55,7 +59,150 @@ function isThisWeek(ts: number): boolean {
   return ts >= startOfDay(now - sevenDays);
 }
 
-export function History({ open, onClose, solves, onDelete, accentHex }: Props) {
+type RowProps = {
+  solve: Solve;
+  index: number;
+  isPB: boolean;
+  revealed: boolean;
+  onReveal: (id: string | null) => void;
+  onDelete: (id: string) => void;
+  onShare: (s: Solve) => void;
+  accentHex: string;
+};
+
+function Row({ solve, index, isPB, revealed, onReveal, onDelete, onShare, accentHex }: RowProps) {
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleDragEnd(_: unknown, info: PanInfo) {
+    if (info.offset.x < -36) onReveal(solve.id);
+    else if (revealed && info.offset.x > 36) onReveal(null);
+    else onReveal(revealed ? solve.id : null);
+  }
+
+  function pressStart() {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    longPressTimer.current = setTimeout(() => onReveal(solve.id), 500);
+  }
+  function pressEnd() {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }
+
+  return (
+    <motion.div
+      style={{ position: "relative", overflow: "hidden" }}
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, x: -window.innerWidth, transition: { duration: 0.25, ease: "easeIn" } }}
+      transition={{ duration: 0.3, ease: "easeOut", delay: index * 0.03 }}
+    >
+      {/* Delete button behind */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete(solve.id);
+        }}
+        className="font-mono"
+        style={{
+          position: "absolute",
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: DELETE_WIDTH,
+          background: DELETE_RED,
+          color: "#FFFFFF",
+          fontSize: 11,
+          letterSpacing: "0.18em",
+          border: "none",
+          cursor: "pointer",
+          padding: 0,
+          zIndex: 0,
+        }}
+      >
+        del
+      </button>
+
+      {/* Swipeable row */}
+      <motion.div
+        drag="x"
+        dragConstraints={{ left: -DELETE_WIDTH, right: 0 }}
+        dragElastic={0.15}
+        dragMomentum={false}
+        onDragEnd={handleDragEnd}
+        animate={{ x: revealed ? -DELETE_WIDTH : 0 }}
+        transition={{ type: "spring", stiffness: 320, damping: 32 }}
+        onPointerDown={pressStart}
+        onPointerUp={pressEnd}
+        onPointerCancel={pressEnd}
+        onPointerLeave={pressEnd}
+        className="flex items-baseline justify-between"
+        style={{
+          paddingTop: 10,
+          paddingBottom: 10,
+          background: "#000",
+          position: "relative",
+          zIndex: 1,
+          touchAction: "pan-y",
+        }}
+      >
+        <span
+          className="font-serif italic"
+          style={{
+            color: "#F5F0E8",
+            fontSize: 30,
+            lineHeight: 1.05,
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {formatTime(solve.time_ms)}
+        </span>
+        <div className="flex items-center gap-3">
+          {isPB && (
+            <span
+              className="font-mono"
+              style={{ color: accentHex, fontSize: 9, letterSpacing: "0.3em" }}
+            >
+              pb
+            </span>
+          )}
+          <span
+            className="font-mono"
+            style={{ color: "#F5F0E8", opacity: 0.4, fontSize: 10, letterSpacing: "0.12em" }}
+          >
+            {formatClock(solve.timestamp)}
+          </span>
+          <button
+            aria-label="share"
+            onClick={(e) => {
+              e.stopPropagation();
+              onShare(solve);
+            }}
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              opacity: 0.3,
+              padding: 4,
+              marginLeft: 4,
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F5F0E8" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+              <polyline points="16 6 12 2 8 6" />
+              <line x1="12" y1="2" x2="12" y2="15" />
+            </svg>
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+export function History({ open, onClose, solves, onDelete, onClearAll, accentHex }: Props) {
   const reversed = useMemo(() => [...solves].sort((a, b) => b.timestamp - a.timestamp), [solves]);
   const groups = useMemo(() => groupSolves(reversed), [reversed]);
 
@@ -77,12 +224,15 @@ export function History({ open, onClose, solves, onDelete, accentHex }: Props) {
     () => (solves.length ? Math.min(...solves.map((s) => s.time_ms)) : null),
     [solves],
   );
-  const thisWeekCount = useMemo(() => solves.filter((s) => isThisWeek(s.timestamp)).length, [solves]);
+  const thisWeekCount = useMemo(
+    () => solves.filter((s) => isThisWeek(s.timestamp)).length,
+    [solves],
+  );
 
-  const [deleteFor, setDeleteFor] = useState<string | null>(null);
+  const [revealedFor, setRevealedFor] = useState<string | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
   const [shareData, setShareData] = useState<{ solve: Solve; isPB: boolean; comparison: string } | null>(null);
   const shareRef = useRef<HTMLDivElement>(null);
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const startYRef = useRef<number | null>(null);
 
@@ -98,17 +248,6 @@ export function History({ open, onClose, solves, onDelete, accentHex }: Props) {
   }
   function onPointerUpContainer() {
     startYRef.current = null;
-  }
-
-  function rowPressStart(id: string) {
-    if (longPressTimer.current) clearTimeout(longPressTimer.current);
-    longPressTimer.current = setTimeout(() => setDeleteFor(id), 500);
-  }
-  function rowPressEnd() {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
   }
 
   const handleShare = useCallback(
@@ -154,16 +293,20 @@ export function History({ open, onClose, solves, onDelete, accentHex }: Props) {
             backdropFilter: "blur(10px)",
             WebkitBackdropFilter: "blur(10px)",
           }}
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 40 }}
-          transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          initial={{ opacity: 0, y: "100%" }}
+          animate={{ opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 30 } }}
+          exit={{ opacity: 0, y: 80, transition: { duration: 0.3, ease: "easeIn" } }}
           onPointerDown={onPointerDownContainer}
           onPointerMove={onPointerMoveContainer}
           onPointerUp={onPointerUpContainer}
           onPointerCancel={onPointerUpContainer}
+          onClick={() => setRevealedFor(null)}
         >
-          <div className="max-w-md mx-auto px-8" style={{ paddingTop: 56, paddingBottom: 80 }}>
+          <div
+            className="max-w-md mx-auto px-8"
+            style={{ paddingTop: 56, paddingBottom: 80 }}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between" style={{ marginBottom: 28 }}>
               <span
                 className="font-mono italic"
@@ -171,32 +314,47 @@ export function History({ open, onClose, solves, onDelete, accentHex }: Props) {
               >
                 history
               </span>
-              <button
-                onClick={onClose}
-                className="font-mono"
-                style={{
-                  color: accentHex,
-                  fontSize: 11,
-                  letterSpacing: "0.3em",
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: 0,
-                }}
-              >
-                close
-              </button>
+              <div className="flex items-center gap-5">
+                {totalSolves > 0 && (
+                  <button
+                    onClick={() => setConfirmClear(true)}
+                    className="font-mono"
+                    style={{
+                      color: DELETE_RED,
+                      opacity: 0.6,
+                      fontSize: 11,
+                      letterSpacing: "0.3em",
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                  >
+                    clear all
+                  </button>
+                )}
+                <button
+                  onClick={onClose}
+                  className="font-mono"
+                  style={{
+                    color: accentHex,
+                    fontSize: 11,
+                    letterSpacing: "0.3em",
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                >
+                  close
+                </button>
+              </div>
             </div>
 
-            {/* Stats bar */}
             {totalSolves > 0 && (
               <div
                 className="flex items-center"
-                style={{
-                  marginBottom: 40,
-                  gap: 14,
-                  flexWrap: "wrap",
-                }}
+                style={{ marginBottom: 40, gap: 14, flexWrap: "wrap" }}
               >
                 <span
                   className="font-serif italic"
@@ -225,7 +383,6 @@ export function History({ open, onClose, solves, onDelete, accentHex }: Props) {
               </div>
             )}
 
-            {/* Empty state */}
             {reversed.length === 0 && (
               <div
                 style={{
@@ -259,144 +416,43 @@ export function History({ open, onClose, solves, onDelete, accentHex }: Props) {
               </div>
             )}
 
-            {groups.map((g) => (
-              <div key={g.label} style={{ marginBottom: 36 }}>
-                <p
-                  className="font-mono"
-                  style={{
-                    color: "#F5F0E8",
-                    opacity: 0.35,
-                    fontSize: 10,
-                    letterSpacing: "0.3em",
-                    marginBottom: 14,
-                  }}
-                >
-                  {g.label}
-                </p>
-                <AnimatePresence initial={false}>
-                  {g.items.map((s) => {
-                    const isDeleteMode = deleteFor === s.id;
-                    return (
-                      <motion.div
-                        key={s.id}
-                        className="flex items-baseline justify-between"
-                        style={{ paddingTop: 10, paddingBottom: 10 }}
-                        initial={{ opacity: 1, x: 0 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -40 }}
-                        transition={{ duration: 0.25, ease: "easeOut" }}
-                        onPointerDown={() => rowPressStart(s.id)}
-                        onPointerUp={rowPressEnd}
-                        onPointerCancel={rowPressEnd}
-                        onPointerLeave={rowPressEnd}
-                      >
-                        <span
-                          className="font-serif italic"
-                          style={{
-                            color: "#F5F0E8",
-                            fontSize: 30,
-                            lineHeight: 1.05,
-                            fontVariantNumeric: "tabular-nums",
-                          }}
-                        >
-                          {formatTime(s.time_ms)}
-                        </span>
-                        <div className="flex items-center gap-3">
-                          {pbIds.has(s.id) && !isDeleteMode && (
-                            <span
-                              className="font-mono"
-                              style={{ color: accentHex, fontSize: 9, letterSpacing: "0.3em" }}
-                            >
-                              pb
-                            </span>
-                          )}
-                          {!isDeleteMode && (
-                            <span
-                              className="font-mono"
-                              style={{
-                                color: "#F5F0E8",
-                                opacity: 0.4,
-                                fontSize: 10,
-                                letterSpacing: "0.12em",
-                              }}
-                            >
-                              {formatClock(s.timestamp)}
-                            </span>
-                          )}
-                          {!isDeleteMode && (
-                            <button
-                              aria-label="share"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void handleShare(s);
-                              }}
-                              style={{
-                                background: "transparent",
-                                border: "none",
-                                cursor: "pointer",
-                                opacity: 0.3,
-                                padding: 4,
-                                marginLeft: 4,
-                                display: "flex",
-                                alignItems: "center",
-                              }}
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F5F0E8" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
-                                <polyline points="16 6 12 2 8 6" />
-                                <line x1="12" y1="2" x2="12" y2="15" />
-                              </svg>
-                            </button>
-                          )}
-                          {isDeleteMode && (
-                            <>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onDelete(s.id);
-                                  setDeleteFor(null);
-                                }}
-                                className="font-mono"
-                                style={{
-                                  color: "#C8553A",
-                                  fontSize: 10,
-                                  letterSpacing: "0.3em",
-                                  background: "transparent",
-                                  border: "none",
-                                  cursor: "pointer",
-                                  padding: 0,
-                                }}
-                              >
-                                delete
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDeleteFor(null);
-                                }}
-                                className="font-mono"
-                                style={{
-                                  color: "#F5F0E8",
-                                  opacity: 0.4,
-                                  fontSize: 10,
-                                  letterSpacing: "0.3em",
-                                  background: "transparent",
-                                  border: "none",
-                                  cursor: "pointer",
-                                  padding: 0,
-                                }}
-                              >
-                                cancel
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </AnimatePresence>
-              </div>
-            ))}
+            {(() => {
+              let idx = 0;
+              return groups.map((g) => (
+                <div key={g.label} style={{ marginBottom: 36 }}>
+                  <p
+                    className="font-mono"
+                    style={{
+                      color: "#F5F0E8",
+                      opacity: 0.35,
+                      fontSize: 10,
+                      letterSpacing: "0.3em",
+                      marginBottom: 14,
+                    }}
+                  >
+                    {g.label}
+                  </p>
+                  <AnimatePresence initial={true}>
+                    {g.items.map((s) => {
+                      const i = idx++;
+                      return (
+                        <Row
+                          key={s.id}
+                          solve={s}
+                          index={i}
+                          isPB={pbIds.has(s.id)}
+                          revealed={revealedFor === s.id}
+                          onReveal={setRevealedFor}
+                          onDelete={onDelete}
+                          onShare={handleShare}
+                          accentHex={accentHex}
+                        />
+                      );
+                    })}
+                  </AnimatePresence>
+                </div>
+              ));
+            })()}
           </div>
 
           {/* Off-screen share card */}
@@ -419,6 +475,71 @@ export function History({ open, onClose, solves, onDelete, accentHex }: Props) {
               />
             </div>
           )}
+
+          {/* Confirm clear overlay */}
+          <AnimatePresence>
+            {confirmClear && (
+              <motion.div
+                className="fixed inset-0 z-[55] flex items-center justify-center px-8"
+                style={{
+                  background: "rgba(0, 0, 0, 0.95)",
+                  backdropFilter: "blur(10px)",
+                  WebkitBackdropFilter: "blur(10px)",
+                }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex flex-col items-center">
+                  <p
+                    className="font-serif italic text-center"
+                    style={{ color: "#F5F0E8", fontSize: 26, marginBottom: 48 }}
+                  >
+                    delete all solves?
+                  </p>
+                  <div className="flex gap-10 items-center">
+                    <button
+                      onClick={() => {
+                        onClearAll();
+                        setRevealedFor(null);
+                        setConfirmClear(false);
+                      }}
+                      className="font-mono"
+                      style={{
+                        color: DELETE_RED,
+                        fontSize: 12,
+                        letterSpacing: "0.3em",
+                        background: "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      yes, clear
+                    </button>
+                    <button
+                      onClick={() => setConfirmClear(false)}
+                      className="font-mono"
+                      style={{
+                        color: "#F5F0E8",
+                        opacity: 0.5,
+                        fontSize: 12,
+                        letterSpacing: "0.3em",
+                        background: "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      cancel
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
       )}
     </AnimatePresence>

@@ -1,5 +1,5 @@
 "use client";
-import { motion } from "framer-motion";
+import { motion, type TargetAndTransition, type Transition } from "framer-motion";
 
 type Props = {
   state: "idle" | "armed" | "running" | "stopped" | "pb";
@@ -14,7 +14,7 @@ const config = {
   pb: { radius: 280, opacity: 0.22 },
 } as const;
 
-const SMOOTH = { duration: 0.8, ease: [0.4, 0, 0.2, 1] } as const;
+const SPRING = { type: "spring", stiffness: 60, damping: 20 } as const;
 
 function hexToRgb(hex: string) {
   const h = hex.replace("#", "");
@@ -27,12 +27,12 @@ export function Bloom({ state, accentHex }: Props) {
   const size = c.radius * 2;
   const { r, g, b } = hexToRgb(accentHex);
 
-  const animate: Record<string, unknown> = {
+  const animate: TargetAndTransition = {
     width: size,
     height: size,
     opacity: c.opacity,
   };
-  let transition: Record<string, unknown> = SMOOTH;
+  let transition: Transition = SPRING;
 
   if (state === "armed") {
     animate.opacity = [0.18, 0.28, 0.18];

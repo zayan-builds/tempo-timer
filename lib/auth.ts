@@ -7,11 +7,12 @@ function bufToB64(buf: Uint8Array): string {
   return btoa(s);
 }
 
-function b64ToBuf(b64: string): Uint8Array {
+function b64ToBuf(b64: string): ArrayBuffer {
   const s = atob(b64);
-  const out = new Uint8Array(s.length);
-  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
-  return out;
+  const buf = new ArrayBuffer(s.length);
+  const view = new Uint8Array(buf);
+  for (let i = 0; i < s.length; i++) view[i] = s.charCodeAt(i);
+  return buf;
 }
 
 export async function isBiometricAvailable(): Promise<boolean> {
