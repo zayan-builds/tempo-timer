@@ -31,7 +31,7 @@ function startOfDay(ts: number): number {
 
 export function TimerScreen() {
   const { settings, accentHex } = useSettings();
-  const { solves, addSolve, deleteSolve } = useHistory();
+  const { solves, addSolve, deleteSolve, clearAll } = useHistory();
 
   const [state, setState] = useState<State>("idle");
   const [scramble, setScramble] = useState<string>("");
@@ -42,9 +42,21 @@ export function TimerScreen() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [pinVerifyOpen, setPinVerifyOpen] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [comparison, setComparison] = useState<string | null>(null);
+  const [comparisonFull, setComparisonFull] = useState<string | null>(null);
+  const [typedText, setTypedText] = useState("");
+  const [shiftPx, setShiftPx] = useState(28);
   const [chevronFlash, setChevronFlash] = useState(false);
   const [pinFailCount, setPinFailCount] = useState(0);
+
+  useEffect(() => {
+    const update = () => {
+      if (typeof window === "undefined") return;
+      setShiftPx(window.innerWidth < 768 ? 22 : 28);
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
 
   const startedAtRef = useRef<number>(0);
   const rafRef = useRef<number | null>(null);
@@ -57,6 +69,7 @@ export function TimerScreen() {
   const newSessionPlayedRef = useRef(false);
   const comparisonShowRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const comparisonHideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typewriterTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
 
   const clearComparisonTimers = useCallback(() => {
     if (comparisonShowRef.current) {
@@ -67,18 +80,33 @@ export function TimerScreen() {
       clearTimeout(comparisonHideRef.current);
       comparisonHideRef.current = null;
     }
+    typewriterTimersRef.current.forEach(clearTimeout);
+    typewriterTimersRef.current = [];
   }, []);
 
-  const scheduleComparison = useCallback((elapsedMs: number, isPB: boolean) => {
-    clearComparisonTimers();
-    setComparison(null);
-    const showDelay = isPB ? 800 : 500;
-    comparisonShowRef.current = setTimeout(() => {
-      setComparison(getComparison(elapsedMs / 1000));
-      // visible window: 400ms fade-in + 2000ms hold, then unmount triggers 600ms fade-out
-      comparisonHideRef.current = setTimeout(() => setComparison(null), 2400);
-    }, showDelay);
-  }, [clearComparisonTimers]);
+  const scheduleComparison = useCallback(
+    (elapsedMs: number, isPB: boolean) => {
+      clearComparisonTimers();
+      setComparisonFull(null);
+      setTypedText("");
+      const showDelay = isPB ? 800 : 500;
+      comparisonShowRef.current = setTimeout(() => {
+        const text = getComparison(elapsedMs / 1000);
+        setComparisonFull(text);
+        setTypedText("");
+        for (let i = 1; i <= text.length; i++) {
+          const t = setTimeout(() => setTypedText(text.slice(0, i)), i * 28);
+          typewriterTimersRef.current.push(t);
+        }
+        const total = text.length * 28 + 2500;
+        comparisonHideRef.current = setTimeout(() => {
+          setComparisonFull(null);
+          setTypedText("");
+        }, total);
+      }, showDelay);
+    },
+    [clearComparisonTimers],
+  );
 
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { scrambleRef.current = scramble; }, [scramble]);
@@ -101,10 +129,10 @@ export function TimerScreen() {
       if (typeof navigator !== "undefined" && "vibrate" in navigator) {
         try {
           const patterns: Record<typeof kind, number | number[]> = {
-            armed: 40,
-            start: 20,
-            stop: [30, 10, 30],
-            pb: [50, 30, 50, 30, 100],
+            armed: [15, 10, 15],
+            start: 8,
+            stop: [20, 15, 40],
+            pb: [10, 8, 10, 8, 10, 8, 60],
           };
           navigator.vibrate(patterns[kind]);
         } catch {}
@@ -162,7 +190,8 @@ export function TimerScreen() {
       setState("armed");
       setDisplayMs(0);
       clearComparisonTimers();
-      setComparison(null);
+      setComparisonFull(null);
+      setTypedText("");
       feedback("armed");
     }, settings.holdMs);
   }, [settings.holdMs, feedback, clearComparisonTimers]);
@@ -366,26 +395,32 @@ export function TimerScreen() {
           paddingRight: 24,
         }}
       >
-        <TimerDisplay ms={displayMs} state={state} accentHex={accentHex} />
+        <motion.div
+          animate={{ y: comparisonFull ? -shiftPx : 0 }}
+          transition={{ type: "spring", stiffness: 120, damping: 20 }}
+          style={{ display: "flex", flexDirection: "column", alignItems: "center" }}
+        >
+          <TimerDisplay ms={displayMs} state={state} accentHex={accentHex} />
+          <AnimatePresence>
+            {state === "pb" && (
+              <motion.div
+                key="pb-label"
+                className="font-mono"
+                style={{ color: accentHex, fontSize: 10, letterSpacing: "0.3em", marginTop: 28 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.6 }}
+              >
+                new best
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
         <AnimatePresence>
-          {state === "pb" && (
+          {comparisonFull && state !== "running" && state !== "armed" && (
             <motion.div
-              key="pb-label"
-              className="font-mono"
-              style={{ color: accentHex, fontSize: 10, letterSpacing: "0.3em", marginTop: 28 }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.6 }}
-            >
-              new best
-            </motion.div>
-          )}
-        </AnimatePresence>
-        <AnimatePresence>
-          {comparison && state !== "running" && state !== "armed" && (
-            <motion.div
-              key={`cmp-${comparison}`}
+              key="cmp"
               className="font-mono italic text-center"
               style={{
                 color: accentHex,
@@ -394,12 +429,16 @@ export function TimerScreen() {
                 marginTop: state === "pb" ? 18 : 28,
                 paddingLeft: 16,
                 paddingRight: 16,
+                position: "absolute",
+                left: 0,
+                right: 0,
+                top: "100%",
               }}
               initial={{ opacity: 0 }}
-              animate={{ opacity: 1, transition: { duration: 0.4, ease: "easeOut" } }}
+              animate={{ opacity: 1, transition: { duration: 0.25, ease: "easeOut" } }}
               exit={{ opacity: 0, transition: { duration: 0.6, ease: "easeIn" } }}
             >
-              {comparison}
+              {typedText}
             </motion.div>
           )}
         </AnimatePresence>
@@ -520,6 +559,7 @@ export function TimerScreen() {
         onClose={() => setHistoryOpen(false)}
         solves={solves}
         onDelete={deleteSolve}
+        onClearAll={clearAll}
         accentHex={accentHex}
       />
 

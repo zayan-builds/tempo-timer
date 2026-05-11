@@ -36,7 +36,10 @@ export function TimerDisplay({ ms, state, accentHex }: Props) {
   const letterSpacing = state === "running" ? "-0.01em" : "0em";
   const textShadow =
     state === "pb" ? `0 0 40px ${accentHex}, 0 0 80px ${accentHex}80` : "none";
-  const overshoot = state === "stopped" || state === "pb" ? { scale: [1, 1.02, 1] } : { scale: state === "armed" ? 1.02 : 1 };
+  const overshoot =
+    state === "stopped" || state === "pb"
+      ? { scale: [1, 1.015, 1] }
+      : { scale: state === "armed" ? 1.02 : 1 };
   const color = pbColorActive ? accentHex : "#F5F0E8";
 
   return (
@@ -54,8 +57,7 @@ export function TimerDisplay({ ms, state, accentHex }: Props) {
       }}
       animate={{ ...overshoot, opacity, color }}
       transition={{
-        duration: 0.2,
-        ease: [0.22, 1, 0.36, 1],
+        scale: { type: "spring", stiffness: 220, damping: 18, duration: 0.25 },
         color: { duration: pbColorActive ? 0.25 : 0.8, ease: "easeOut" },
         opacity: { duration: 0.3, ease: "easeOut" },
       }}
