@@ -1,5 +1,4 @@
 "use client";
-import { motion, type TargetAndTransition, type Transition } from "framer-motion";
 
 type Props = {
   state: "idle" | "armed" | "running" | "stopped" | "pb";
@@ -14,8 +13,6 @@ const config = {
   pb: { radius: 280, opacity: 0.22 },
 } as const;
 
-const SPRING = { type: "spring", stiffness: 60, damping: 20 } as const;
-
 function hexToRgb(hex: string) {
   const h = hex.replace("#", "");
   const num = parseInt(h, 16);
@@ -26,41 +23,29 @@ export function Bloom({ state, accentHex }: Props) {
   const c = config[state];
   const size = c.radius * 2;
   const { r, g, b } = hexToRgb(accentHex);
-
-  const animate: TargetAndTransition = {
-    width: size,
-    height: size,
-    opacity: c.opacity,
-  };
-  let transition: Transition = SPRING;
-
-  if (state === "armed") {
-    animate.opacity = [0.18, 0.28, 0.18];
-    animate.scale = [0.95, 1.05, 0.95];
-    transition = { duration: 1.6, repeat: Infinity, ease: "easeInOut" };
-  } else if (state === "running") {
-    animate.scale = [0.95, 1.05, 0.95];
-    transition = { duration: 2, repeat: Infinity, ease: "easeInOut" };
-  }
+  const pulsing = state === "armed" || state === "running";
 
   return (
-    <motion.div
+    <div
       aria-hidden
+      className={pulsing ? "tempo-bloom-pulse" : undefined}
       style={{
         position: "fixed",
         top: "45%",
         left: "50%",
-        x: "-50%",
-        y: "-50%",
+        width: size,
+        height: size,
+        transform: "translate(-50%, -50%)",
+        opacity: c.opacity,
         borderRadius: "9999px",
         pointerEvents: "none",
         background: `radial-gradient(circle, rgba(${r},${g},${b},1) 0%, rgba(${r},${g},${b},0.55) 38%, rgba(${r},${g},${b},0) 72%)`,
         filter: "blur(50px)",
         zIndex: 0,
+        transition:
+          "width 0.6s cubic-bezier(0.4,0,0.2,1), height 0.6s cubic-bezier(0.4,0,0.2,1), opacity 0.6s cubic-bezier(0.4,0,0.2,1)",
+        willChange: "transform, opacity",
       }}
-      initial={{ width: 280, height: 280, opacity: 0.09, scale: 1 }}
-      animate={animate}
-      transition={transition}
     />
   );
 }

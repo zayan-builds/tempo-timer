@@ -21,6 +21,7 @@ import { sounds, unlockAudio } from "@/lib/sound";
 import { verifyBiometric, verifyPin } from "@/lib/auth";
 import { getComparison } from "@/lib/comparison";
 import { triggerHaptic } from "@/lib/haptics";
+import { App as CapApp } from "@capacitor/app";
 
 type State = "idle" | "armed" | "running" | "stopped" | "pb";
 
@@ -66,6 +67,7 @@ export function TimerScreen() {
   const scrambleRef = useRef<string>("");
   const overlayOpenRef = useRef(false);
   const pressStartYRef = useRef<number | null>(null);
+  const pressStartXRef = useRef<number | null>(null);
   const swipeTriggeredRef = useRef(false);
   const newSessionPlayedRef = useRef(false);
   const comparisonShowRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -221,6 +223,7 @@ export function TimerScreen() {
       e.preventDefault();
       unlockAudio();
       pressStartYRef.current = e.clientY;
+      pressStartXRef.current = e.clientX;
       swipeTriggeredRef.current = false;
       if (stateRef.current === "running") {
         stopRunning();
@@ -235,13 +238,18 @@ export function TimerScreen() {
     (e: React.PointerEvent) => {
       if (overlayOpenRef.current) return;
       const startY = pressStartYRef.current;
-      if (startY === null || swipeTriggeredRef.current) return;
+      const startX = pressStartXRef.current;
+      if (startY === null || startX === null || swipeTriggeredRef.current) return;
       if (stateRef.current === "running" || stateRef.current === "armed") return;
+      const screenH = typeof window !== "undefined" ? window.innerHeight : 0;
+      if (startY < screenH * 0.7) return;
       const dy = startY - e.clientY;
-      if (dy > 80) {
+      const dx = Math.abs(e.clientX - startX);
+      if (dy > 60 && dx < 30) {
         swipeTriggeredRef.current = true;
         cancelHold();
         pressStartYRef.current = null;
+        pressStartXRef.current = null;
         void openHistoryGated();
       }
     },
@@ -253,6 +261,7 @@ export function TimerScreen() {
       if (overlayOpenRef.current) return;
       e.preventDefault();
       pressStartYRef.current = null;
+      pressStartXRef.current = null;
       cancelHold();
       if (swipeTriggeredRef.current) {
         swipeTriggeredRef.current = false;
@@ -271,6 +280,33 @@ export function TimerScreen() {
     },
     [clearComparisonTimers],
   );
+
+  useEffect(() => {
+    const handleBack = () => {
+      if (historyOpen) { setHistoryOpen(false); return; }
+      if (settingsOpen) { setSettingsOpen(false); return; }
+      if (infoOpen) { setInfoOpen(false); return; }
+      if (pinVerifyOpen) { setPinVerifyOpen(false); return; }
+      void CapApp.minimizeApp().catch(() => {});
+    };
+    const onPopState = (e: PopStateEvent) => {
+      e.preventDefault?.();
+      handleBack();
+      window.history.pushState(null, "", window.location.href);
+    };
+    if (typeof window !== "undefined") {
+      window.history.pushState(null, "", window.location.href);
+      window.addEventListener("popstate", onPopState);
+    }
+    let remove: (() => void) | null = null;
+    CapApp.addListener("backButton", handleBack)
+      .then((h) => { remove = () => h.remove(); })
+      .catch(() => {});
+    return () => {
+      if (typeof window !== "undefined") window.removeEventListener("popstate", onPopState);
+      if (remove) remove();
+    };
+  }, [historyOpen, settingsOpen, infoOpen, pinVerifyOpen]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -489,7 +525,7 @@ export function TimerScreen() {
             key="history-chevron"
             aria-label="history"
             onClick={() => void openHistoryGated()}
-            className="absolute"
+            className={`absolute${chevronFlash ? "" : " tempo-chevron-pulse"}`}
             style={{
               left: "50%",
               bottom: 14,
@@ -501,7 +537,7 @@ export function TimerScreen() {
               zIndex: 25,
             }}
             initial={{ opacity: 0 }}
-            animate={{ opacity: chevronFlash ? 1 : 0.4 }}
+            animate={chevronFlash ? { opacity: 1 } : { opacity: undefined }}
             exit={{ opacity: 0 }}
             transition={{ duration: chevronFlash ? 0.18 : 0.4 }}
           >

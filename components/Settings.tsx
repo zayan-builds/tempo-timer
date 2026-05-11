@@ -7,6 +7,7 @@ import {
   isBiometricAvailable,
   registerBiometric,
   setPin,
+  verifyBiometric,
 } from "@/lib/auth";
 import { PinPad } from "./PinPad";
 
@@ -61,6 +62,13 @@ function Toggle({ on, onChange, accentHex }: { on: boolean; onChange: (v: boolea
 export function Settings({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { settings, update, accentHex } = useSettings();
   const [pinSetupOpen, setPinSetupOpen] = useState(false);
+  const [pinDisableOpen, setPinDisableOpen] = useState(false);
+  const [authToast, setAuthToast] = useState<string | null>(null);
+
+  function showAuthToast() {
+    setAuthToast("authenticate to disable lock");
+    setTimeout(() => setAuthToast(null), 1800);
+  }
 
   async function enableLock() {
     const bio = await isBiometricAvailable();
@@ -75,10 +83,24 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
     setPinSetupOpen(true);
   }
 
-  function disableLock() {
+  function doDisableLock() {
     clearAuth();
     update("lockMethod", "none");
     update("lockHistory", false);
+  }
+
+  async function requestDisableLock() {
+    if (settings.lockMethod === "biometric") {
+      const ok = await verifyBiometric();
+      if (ok) doDisableLock();
+      else showAuthToast();
+      return;
+    }
+    if (settings.lockMethod === "pin") {
+      setPinDisableOpen(true);
+      return;
+    }
+    doDisableLock();
   }
 
   return (
@@ -178,7 +200,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                 <Row label="LOCK HISTORY" withDivider={false}>
                   <Toggle
                     on={settings.lockHistory}
-                    onChange={(v) => (v ? enableLock() : disableLock())}
+                    onChange={(v) => (v ? enableLock() : requestDisableLock())}
                     accentHex={accentHex}
                   />
                 </Row>
@@ -258,7 +280,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     letterSpacing: "0.18em",
                   }}
                 >
-                  v0.1.0
+                  v0.1.1
                 </p>
               </div>
 
@@ -298,6 +320,50 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
           }}
         />
       )}
+
+      {pinDisableOpen && (
+        <PinPad
+          mode="verify"
+          accentHex={accentHex}
+          title="enter pin to disable lock"
+          onCancel={() => {
+            setPinDisableOpen(false);
+            showAuthToast();
+          }}
+          onSubmit={async (pin) => {
+            const { verifyPin } = await import("@/lib/auth");
+            const ok = await verifyPin(pin);
+            if (ok) {
+              setPinDisableOpen(false);
+              doDisableLock();
+              return true;
+            }
+            return false;
+          }}
+        />
+      )}
+
+      <AnimatePresence>
+        {authToast && (
+          <motion.div
+            className="fixed left-0 right-0 flex justify-center font-mono"
+            style={{
+              bottom: 60,
+              zIndex: 70,
+              color: accentHex,
+              fontSize: 10,
+              letterSpacing: "0.3em",
+              pointerEvents: "none",
+            }}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.25 }}
+          >
+            {authToast}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 }

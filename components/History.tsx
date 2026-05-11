@@ -2,7 +2,7 @@
 import { motion, AnimatePresence, PanInfo } from "framer-motion";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Solve } from "@/hooks/useHistory";
-import { formatTime } from "@/lib/format";
+import { formatTime, isValidFormatted } from "@/lib/format";
 import { getComparison } from "@/lib/comparison";
 import { ShareCard } from "./ShareCard";
 
@@ -91,12 +91,13 @@ function Row({ solve, index, isPB, revealed, onReveal, onDelete, onShare, accent
   }
 
   return (
-    <motion.div
-      style={{ position: "relative", overflow: "hidden" }}
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, x: -window.innerWidth, transition: { duration: 0.25, ease: "easeIn" } }}
-      transition={{ duration: 0.3, ease: "easeOut", delay: index * 0.03 }}
+    <div
+      className="tempo-row-in"
+      style={{
+        position: "relative",
+        overflow: "hidden",
+        animationDelay: `${index * 40}ms`,
+      }}
     >
       {/* Delete button behind */}
       <button
@@ -198,18 +199,22 @@ function Row({ solve, index, isPB, revealed, onReveal, onDelete, onShare, accent
           </button>
         </div>
       </motion.div>
-    </motion.div>
+    </div>
   );
 }
 
 export function History({ open, onClose, solves, onDelete, onClearAll, accentHex }: Props) {
-  const reversed = useMemo(() => [...solves].sort((a, b) => b.timestamp - a.timestamp), [solves]);
+  const validSolves = useMemo(
+    () => solves.filter((s) => typeof s.time_ms === "number" && s.time_ms > 0 && isValidFormatted(formatTime(s.time_ms))),
+    [solves],
+  );
+  const reversed = useMemo(() => [...validSolves].sort((a, b) => b.timestamp - a.timestamp), [validSolves]);
   const groups = useMemo(() => groupSolves(reversed), [reversed]);
 
   const pbIds = useMemo(() => {
     const ids = new Set<string>();
     let best = Infinity;
-    const chrono = [...solves].sort((a, b) => a.timestamp - b.timestamp);
+    const chrono = [...validSolves].sort((a, b) => a.timestamp - b.timestamp);
     let count = 0;
     for (const s of chrono) {
       count++;
@@ -217,16 +222,16 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
       if (s.time_ms < best) best = s.time_ms;
     }
     return ids;
-  }, [solves]);
+  }, [validSolves]);
 
-  const totalSolves = solves.length;
+  const totalSolves = validSolves.length;
   const personalBest = useMemo(
-    () => (solves.length ? Math.min(...solves.map((s) => s.time_ms)) : null),
-    [solves],
+    () => (validSolves.length ? Math.min(...validSolves.map((s) => s.time_ms)) : null),
+    [validSolves],
   );
   const thisWeekCount = useMemo(
-    () => solves.filter((s) => isThisWeek(s.timestamp)).length,
-    [solves],
+    () => validSolves.filter((s) => isThisWeek(s.timestamp)).length,
+    [validSolves],
   );
 
   const [revealedFor, setRevealedFor] = useState<string | null>(null);
@@ -304,7 +309,7 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
         >
           <div
             className="max-w-md mx-auto px-8"
-            style={{ paddingTop: 56, paddingBottom: 80 }}
+            style={{ paddingTop: 56, paddingBottom: totalSolves > 0 ? 110 : 80 }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between" style={{ marginBottom: 28 }}>
@@ -314,69 +319,54 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
               >
                 history
               </span>
-              <div className="flex items-center gap-5">
-                {totalSolves > 0 && (
-                  <button
-                    onClick={() => setConfirmClear(true)}
-                    className="font-mono"
-                    style={{
-                      color: DELETE_RED,
-                      opacity: 0.6,
-                      fontSize: 11,
-                      letterSpacing: "0.3em",
-                      background: "transparent",
-                      border: "none",
-                      cursor: "pointer",
-                      padding: 0,
-                    }}
-                  >
-                    clear all
-                  </button>
-                )}
-                <button
-                  onClick={onClose}
-                  className="font-mono"
-                  style={{
-                    color: accentHex,
-                    fontSize: 11,
-                    letterSpacing: "0.3em",
-                    background: "transparent",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: 0,
-                  }}
-                >
-                  close
-                </button>
-              </div>
+              <button
+                onClick={onClose}
+                className="font-mono"
+                style={{
+                  color: accentHex,
+                  fontSize: 11,
+                  letterSpacing: "0.3em",
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 0,
+                }}
+              >
+                close
+              </button>
             </div>
 
             {totalSolves > 0 && (
               <div
-                className="flex items-center"
-                style={{ marginBottom: 40, gap: 14, flexWrap: "wrap" }}
+                className="flex items-center justify-start"
+                style={{
+                  marginBottom: 40,
+                  gap: 10,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                }}
               >
                 <span
                   className="font-serif italic"
-                  style={{ color: "#F5F0E8", fontSize: 18, opacity: 0.85 }}
+                  style={{ color: "#F5F0E8", fontSize: 15, opacity: 0.85, whiteSpace: "nowrap" }}
                 >
                   {totalSolves} {totalSolves === 1 ? "solve" : "solves"}
                 </span>
-                <span style={{ color: "#F5F0E8", opacity: 0.25, fontSize: 8 }}>•</span>
+                <span style={{ color: "#F5F0E8", opacity: 0.25, fontSize: 8 }}>·</span>
                 {personalBest !== null && (
                   <>
                     <span
                       className="font-mono"
-                      style={{ color: accentHex, fontSize: 11, letterSpacing: "0.1em" }}
+                      style={{ color: accentHex, fontSize: 10, letterSpacing: "0.08em", whiteSpace: "nowrap" }}
                     >
                       best {formatTime(personalBest)}
                     </span>
-                    <span style={{ color: "#F5F0E8", opacity: 0.25, fontSize: 8 }}>•</span>
+                    <span style={{ color: "#F5F0E8", opacity: 0.25, fontSize: 8 }}>·</span>
                   </>
                 )}
                 <span
                   className="font-mono"
-                  style={{ color: "#F5F0E8", fontSize: 11, opacity: 0.4, letterSpacing: "0.08em" }}
+                  style={{ color: "#F5F0E8", fontSize: 10, opacity: 0.4, letterSpacing: "0.06em", whiteSpace: "nowrap" }}
                 >
                   {thisWeekCount} this week
                 </span>
@@ -393,11 +383,19 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
                   alignItems: "center",
                   justifyContent: "center",
                   pointerEvents: "none",
+                  textAlign: "center",
                 }}
               >
                 <p
                   className="font-serif italic"
-                  style={{ color: "#F5F0E8", opacity: 0.4, fontSize: 32 }}
+                  style={{
+                    color: "#F5F0E8",
+                    opacity: 0.4,
+                    fontSize: 32,
+                    padding: "0 32px",
+                    textAlign: "center",
+                    margin: 0,
+                  }}
                 >
                   no solves yet
                 </p>
@@ -409,6 +407,8 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
                     fontSize: 10,
                     letterSpacing: "0.18em",
                     marginTop: 16,
+                    padding: "0 32px",
+                    textAlign: "center",
                   }}
                 >
                   complete your first solve to see history
@@ -454,6 +454,45 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
               ));
             })()}
           </div>
+
+          {/* Fixed clear-all footer */}
+          {totalSolves > 0 && (
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: "fixed",
+                left: 0,
+                right: 0,
+                bottom: 0,
+                display: "flex",
+                justifyContent: "center",
+                paddingTop: 14,
+                paddingBottom: 22,
+                background:
+                  "linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 60%, rgba(0,0,0,0) 100%)",
+                zIndex: 45,
+                pointerEvents: "none",
+              }}
+            >
+              <button
+                onClick={() => setConfirmClear(true)}
+                className="font-mono"
+                style={{
+                  color: DELETE_RED,
+                  opacity: 0.55,
+                  fontSize: 10,
+                  letterSpacing: "0.3em",
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "8px 16px",
+                  pointerEvents: "auto",
+                }}
+              >
+                clear all
+              </button>
+            </div>
+          )}
 
           {/* Off-screen share card */}
           {shareData && (
