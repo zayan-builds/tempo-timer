@@ -59,6 +59,16 @@ async function loadAll(): Promise<Solve[]> {
   return out.sort((a, b) => a.timestamp - b.timestamp);
 }
 
+async function removeFromDb(id: string): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
 async function persist(solve: Solve, encrypt: boolean): Promise<void> {
   const db = await openDB();
   let record: Stored;
@@ -117,7 +127,12 @@ export function useHistory() {
     [solves, settings.encryptHistory],
   );
 
-  return { solves, ready, addSolve };
+  const deleteSolve = useCallback((id: string) => {
+    setSolves((prev) => prev.filter((s) => s.id !== id));
+    void removeFromDb(id);
+  }, []);
+
+  return { solves, ready, addSolve, deleteSolve };
 }
 
 export function avgOfN(solves: Solve[], n: number): number | null {

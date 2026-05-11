@@ -49,7 +49,7 @@ export function Info({
               how to use tempo
             </p>
             <p style={{ marginBottom: 16, opacity: 0.85 }}>
-              Hold anywhere on the screen. The timer will brighten after a moment — that means it&apos;s ready. Let go to start.
+              Hold anywhere on the screen. The timer will brighten after a moment. That means it&apos;s ready. Let go to start.
             </p>
             <p style={{ marginBottom: 16, opacity: 0.85 }}>
               Tap anywhere to stop. Your time is saved automatically.

@@ -22,6 +22,17 @@ export const metadata: Metadata = {
   title: "Tempo",
   description: "A focused speedcubing timer.",
   manifest: "/manifest.json",
+  openGraph: {
+    title: "Tempo — cube timer",
+    description: "A beautiful, private timer for solving the Rubik's cube.",
+    images: ["/icon-512.png"],
+  },
+  twitter: {
+    card: "summary",
+    title: "Tempo — cube timer",
+    description: "A beautiful, private timer for solving the Rubik's cube.",
+    images: ["/icon-512.png"],
+  },
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
