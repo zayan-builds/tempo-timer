@@ -97,7 +97,7 @@ async function fetchWithTimeout(url: string, timeoutMs = 10000): Promise<Respons
 }
 
 export async function checkForUpdate(): Promise<void> {
-  console.log("[updater] checkForUpdate start");
+  console.log("[updater] checkForUpdate start — FALLBACK_VERSION=" + FALLBACK_VERSION);
   setStatus({ download: "idle", error: undefined, done: false });
 
   let CapacitorUpdater: typeof import("@capgo/capacitor-updater").CapacitorUpdater | null = null;
@@ -109,24 +109,29 @@ export async function checkForUpdate(): Promise<void> {
     console.log("[updater] plugin import failed", e);
   }
 
-  // Determine current version: prefer Preferences (set on every successful apply),
+  // Determine current version: prefer Preferences (set only after a confirmed successful set()),
   // fall back to CapacitorUpdater.current(), then NEXT_PUBLIC_APP_VERSION.
   let currentVersion = stripV(FALLBACK_VERSION);
   const stored = await getStoredVersion();
+  console.log("[updater] stored version from Preferences:", stored ?? "(none)");
   if (stored) {
     currentVersion = stored;
   } else if (CapacitorUpdater) {
     try {
       const cur = await CapacitorUpdater.current();
       const fromBundle = (cur as unknown as { bundle?: { version?: string } }).bundle?.version;
-      if (fromBundle) currentVersion = stripV(fromBundle);
-      console.log("[updater] CapacitorUpdater.current() =>", cur);
+      console.log("[updater] CapacitorUpdater.current() =>", JSON.stringify(cur));
+      if (fromBundle && fromBundle !== "builtin") currentVersion = stripV(fromBundle);
     } catch (e) {
       console.log("[updater] current() failed", e);
     }
   }
   // Seed Preferences on first run so future checks are stable.
-  if (!stored) await setStoredVersion(currentVersion);
+  if (!stored) {
+    console.log("[updater] seeding stored version to", currentVersion);
+    await setStoredVersion(currentVersion);
+  }
+  console.log("[updater] currentVersion resolved to:", currentVersion);
   setStatus({ current: currentVersion });
 
   // Fetch release manifest with cache-busting and timeout.
@@ -149,11 +154,10 @@ export async function checkForUpdate(): Promise<void> {
     return;
   }
 
-  const latest = stripV(release.tag_name || "");
-  console.log("[updater] release", {
-    tag: release.tag_name,
-    assets: (release.assets || []).map((a) => a.name),
-  });
+  const rawTag = release.tag_name || "";
+  const latest = stripV(rawTag);
+  console.log("[updater] release tag_name (raw):", rawTag, "=> stripped:", latest);
+  console.log("[updater] release assets:", (release.assets || []).map((a) => a.name));
   if (!latest) {
     setStatus({ error: "no tag on release", done: true });
     return;
@@ -161,13 +165,15 @@ export async function checkForUpdate(): Promise<void> {
   setStatus({ latest });
 
   const cmp = compareVersions(latest, currentVersion);
-  console.log(`[updater] compare latest=${latest} current=${currentVersion} => ${cmp}`);
+  console.log(`[updater] VERSION COMPARE: latest="${latest}" vs current="${currentVersion}" => "${cmp}"`);
   setStatus({ compare: cmp });
 
   if (cmp !== "newer") {
+    console.log("[updater] no update needed, skipping download");
     setStatus({ download: "skipped", done: true });
     return;
   }
+  console.log("[updater] update available — proceeding to download");
 
   // Locate dist.zip — fall back to the well-known direct path if the asset enumeration is empty.
   const apiAsset = (release.assets || []).find((a) => a.name === ASSET_NAME);
@@ -185,29 +191,33 @@ export async function checkForUpdate(): Promise<void> {
 
   setStatus({ download: "pending" });
   try {
-    console.log("[updater] downloading bundle", latest, downloadUrl);
+    console.log("[updater] calling download() url:", downloadUrl, "version:", latest);
     const bundle = await CapacitorUpdater.download({
       url: downloadUrl,
       version: latest,
     });
-    console.log("[updater] download result", bundle);
+    console.log("[updater] download() returned:", JSON.stringify(bundle));
     if (!bundle?.id) {
+      console.log("[updater] ERROR: bundle has no id — aborting");
       setStatus({ download: "failed", error: "no bundle id", done: true });
       return;
     }
-    console.log("[updater] applying bundle", bundle.id);
+    console.log("[updater] calling set() with bundle.id:", bundle.id);
     await CapacitorUpdater.set({ id: bundle.id });
+    console.log("[updater] set() returned successfully");
     await setStoredVersion(latest);
-    console.log("[updater] set() complete, reloading…");
+    console.log("[updater] stored version updated to:", latest);
     setStatus({ download: "ok", done: true });
+    console.log("[updater] calling reload()");
     try {
       await CapacitorUpdater.reload();
+      console.log("[updater] reload() called — app should restart");
     } catch (e) {
-      console.log("[updater] reload() failed (will apply on next launch)", e);
+      console.log("[updater] reload() failed (bundle will apply on next launch):", e);
     }
   } catch (e) {
     const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
-    console.log("[updater] download/apply failed:", msg);
+    console.log("[updater] FATAL download/apply error:", msg);
     setStatus({ download: "failed", error: msg, done: true });
   }
 }
