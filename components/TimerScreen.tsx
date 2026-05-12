@@ -1,5 +1,4 @@
 "use client";
-import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bloom } from "./Bloom";
 import { TimerDisplay } from "./TimerDisplay";
@@ -46,7 +45,7 @@ export function TimerScreen() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [comparisonFull, setComparisonFull] = useState<string | null>(null);
   const [typedText, setTypedText] = useState("");
-  const [chevronFlash, setChevronFlash] = useState(false);
+  const [historyFlash, setHistoryFlash] = useState(false);
   const [pinFailCount, setPinFailCount] = useState(0);
 
   const startedAtRef = useRef<number>(0);
@@ -187,8 +186,8 @@ export function TimerScreen() {
 
   const openHistoryGated = useCallback(async () => {
     if (!settings.lockHistory) { setHistoryOpen(true); return; }
-    setChevronFlash(true);
-    setTimeout(() => setChevronFlash(false), 200);
+    setHistoryFlash(true);
+    setTimeout(() => setHistoryFlash(false), 200);
     if (settings.lockMethod === "biometric") {
       const ok = await verifyBiometric();
       if (ok) setHistoryOpen(true);
@@ -220,12 +219,7 @@ export function TimerScreen() {
     [armHold, stopRunning],
   );
 
-  const onPointerMove = useCallback(
-    (_e: React.PointerEvent) => {
-      // Swipe-up-to-open removed — history opens via chevron tap only.
-    },
-    [],
-  );
+  const onPointerMove = useCallback((_e: React.PointerEvent) => {}, []);
 
   const onRelease = useCallback(
     (e: React.PointerEvent) => {
@@ -312,8 +306,7 @@ export function TimerScreen() {
   const statsVisible = settings.proMode && state !== "running";
   const scrambleVisible = settings.proMode && !!scramble;
   const scrambleOpacity = state === "running" ? 0.18 : 0.6;
-  const pbFlash = state === "pb";
-  const chevronVisible = state !== "running" && state !== "armed";
+  const historyVisible = state !== "running" && state !== "armed";
   const comparisonShown = !!comparisonFull && state !== "running" && state !== "armed";
 
   return (
@@ -327,62 +320,75 @@ export function TimerScreen() {
           overscrollBehavior: "none",
         }}
       >
+        {/* Bloom */}
         <div className="tempo-stage-bloom" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
           <Bloom state={state} accentHex={accentHex} />
         </div>
 
-        <AnimatePresence>
-          {pbFlash && (
-            <motion.div
-              key="pb-flash"
-              aria-hidden
-              className="fixed inset-0 pointer-events-none"
-              style={{ background: accentHex, zIndex: 2 }}
-              initial={{ opacity: 0.2 }}
-              animate={{ opacity: 0 }}
-              transition={{ duration: 0.18, ease: "easeOut" }}
-            />
-          )}
-        </AnimatePresence>
+        {/* PB flash — CSS keyframe, no Framer Motion */}
+        {state === "pb" && (
+          <div
+            aria-hidden
+            className="fixed inset-0 pointer-events-none tempo-pb-flash"
+            style={{ background: accentHex, zIndex: 2 }}
+          />
+        )}
 
+        {/* Info button */}
         <button
           aria-label="info"
           onClick={() => setInfoOpen(true)}
           className="absolute font-mono tempo-stage-chrome"
           style={{
-            top: 18, left: 20, zIndex: 30,
-            color: "#F5F0E8", fontSize: 14,
+            top: 10, left: 12, zIndex: 30,
+            color: "#F5F0E8", opacity: 0.35, fontSize: 14,
             background: "transparent", border: "none", cursor: "pointer",
-            width: 32, height: 32, padding: 0,
+            width: 44, height: 44,
+            display: "flex", alignItems: "center", justifyContent: "center",
             touchAction: "manipulation",
           }}
         >
           ?
         </button>
 
+        {/* Logo */}
+        <div
+          className="absolute left-0 right-0 flex justify-center pointer-events-none tempo-stage-chrome"
+          style={{ top: 18, zIndex: 30 }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/tempo-logo.jpeg"
+            alt="Tempo"
+            style={{ height: 28, width: "auto", objectFit: "contain", display: "block" }}
+          />
+        </div>
+
+        {/* Settings button */}
         <button
           aria-label="settings"
           onClick={() => setSettingsOpen(true)}
           className="absolute tempo-stage-chrome"
           style={{
-            top: 18, right: 20, zIndex: 30,
+            top: 10, right: 12, zIndex: 30,
             background: "transparent", border: "none", cursor: "pointer",
-            width: 32, height: 32, padding: 0,
+            width: 44, height: 44,
             display: "flex", alignItems: "center", justifyContent: "center",
             touchAction: "manipulation",
           }}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F5F0E8" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F5F0E8" strokeOpacity="0.35" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="3" />
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
         </button>
 
+        {/* Scramble */}
         {scrambleVisible && (
           <div
             className="absolute left-0 right-0 flex justify-center px-12"
             style={{
-              top: 56,
+              top: 64,
               zIndex: 5,
               opacity: scrambleOpacity,
               transition: "opacity 0.4s ease",
@@ -397,7 +403,7 @@ export function TimerScreen() {
           </div>
         )}
 
-        {/* Timer + new-best slot (fixed, no layout shift) */}
+        {/* Timer + new-best + comparison (fixed vertical position, no layout shift) */}
         <div
           className="absolute left-0 right-0 tempo-stage-timer"
           style={{
@@ -414,39 +420,31 @@ export function TimerScreen() {
         >
           <div style={{ position: "relative", display: "flex", justifyContent: "center", alignItems: "center" }}>
             <TimerDisplay ms={displayMs} state={state} accentHex={accentHex} />
-            {/* new-best label: absolute, never affects layout */}
+            {/* new-best: absolute, never pushes layout */}
             <div
               aria-hidden={state !== "pb"}
+              className="font-mono"
               style={{
                 position: "absolute",
                 left: "50%",
                 top: "100%",
                 transform: "translateX(-50%)",
-                marginTop: 18,
+                marginTop: 14,
                 color: accentHex,
                 fontSize: 10,
                 letterSpacing: "0.3em",
                 opacity: state === "pb" ? 1 : 0,
-                transition: "opacity 600ms cubic-bezier(0.4,0,0.2,1)",
+                transition: "opacity 0.6s cubic-bezier(0.4,0,0.2,1)",
                 whiteSpace: "nowrap",
                 pointerEvents: "none",
               }}
-              className="font-mono"
             >
               new best
             </div>
           </div>
 
-          {/* Comparison slot: pre-reserved min-height, absolute overlay so no jump */}
-          <div
-            style={{
-              position: "relative",
-              width: "100%",
-              marginTop: state === "pb" ? 44 : 32,
-              minHeight: 36,
-              transition: "margin-top 0.3s ease",
-            }}
-          >
+          {/* Comparison slot: fixed space so margin never changes */}
+          <div style={{ position: "relative", width: "100%", marginTop: 44, minHeight: 36 }}>
             <div
               className="font-mono italic text-center"
               style={{
@@ -460,9 +458,7 @@ export function TimerScreen() {
                 paddingLeft: 16,
                 paddingRight: 16,
                 opacity: comparisonShown ? 1 : 0,
-                transition: comparisonShown
-                  ? "opacity 0.25s ease-out"
-                  : "opacity 0.6s ease-in",
+                transition: comparisonShown ? "opacity 0.25s ease-out" : "opacity 0.6s ease-in",
                 pointerEvents: "none",
               }}
             >
@@ -471,107 +467,99 @@ export function TimerScreen() {
           </div>
         </div>
 
-        {/* Bottom strip */}
+        {/* Bottom stats strip — two layers, CSS opacity only */}
         <div
-          className="absolute left-0 right-0 px-8 flex justify-center items-center font-mono"
-          style={{
-            bottom: "5%",
-            color: "#F5F0E8",
-            fontSize: 11,
-            letterSpacing: "0.08em",
-            zIndex: 5,
-            minHeight: 16,
-          }}
+          className="absolute left-0 right-0 font-mono"
+          style={{ bottom: "5%", zIndex: 5, height: 44 }}
         >
-          <AnimatePresence mode="wait">
-            {statsVisible && lastSolveMs !== null && (
-              <motion.div
-                key="bottom-row"
-                layout={false}
-                className="w-full flex justify-between items-center"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 0.55 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
-              >
-                <span style={{ minWidth: 80 }}>{ao5 !== null ? `ao5  ${formatTime(ao5)}` : ""}</span>
-                <span>{formatTime(lastSolveMs)}</span>
-                <span style={{ minWidth: 80, textAlign: "right" }}>{ao12 !== null ? `ao12 ${formatTime(ao12)}` : ""}</span>
-              </motion.div>
-            )}
-            {!statsVisible && lastSolveMs !== null && state !== "running" && (
-              <motion.div
-                key="bottom-last"
-                layout={false}
-                className="flex flex-col items-center"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
-              >
-                <span style={{ color: "#F5F0E8", opacity: 0.3, fontSize: 10, letterSpacing: "0.3em", marginBottom: 6 }}>
-                  last solve
-                </span>
-                <span style={{ color: "#F5F0E8", opacity: 0.7, fontSize: 13, letterSpacing: "0.08em" }}>
-                  {formatTime(lastSolveMs)}
-                </span>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* Pro mode: ao5 | last | ao12 */}
+          <div
+            className="absolute inset-0 flex justify-between items-center"
+            style={{
+              paddingLeft: 24,
+              paddingRight: 24,
+              opacity: statsVisible && lastSolveMs !== null ? 0.55 : 0,
+              transition: "opacity 0.3s ease",
+              pointerEvents: "none",
+              fontSize: 11,
+              letterSpacing: "0.08em",
+              color: "#F5F0E8",
+            }}
+          >
+            <span style={{ minWidth: 80 }}>{ao5 !== null ? `ao5  ${formatTime(ao5)}` : ""}</span>
+            <span>{lastSolveMs !== null ? formatTime(lastSolveMs) : ""}</span>
+            <span style={{ minWidth: 80, textAlign: "right" }}>{ao12 !== null ? `ao12 ${formatTime(ao12)}` : ""}</span>
+          </div>
+
+          {/* Non-pro: last solve */}
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center"
+            style={{
+              opacity: !statsVisible && lastSolveMs !== null && state !== "running" ? 1 : 0,
+              transition: "opacity 0.3s ease",
+              pointerEvents: "none",
+            }}
+          >
+            <span className="font-mono" style={{ color: "#F5F0E8", opacity: 0.3, fontSize: 10, letterSpacing: "0.3em", marginBottom: 4 }}>
+              last solve
+            </span>
+            <span className="font-mono" style={{ color: "#F5F0E8", opacity: 0.7, fontSize: 13, letterSpacing: "0.08em" }}>
+              {lastSolveMs !== null ? formatTime(lastSolveMs) : ""}
+            </span>
+          </div>
         </div>
 
-        {/* Chevron — full-width tap target, opens history */}
-        <AnimatePresence>
-          {chevronVisible && (
-            <motion.button
-              key="history-chevron"
-              layout={false}
-              aria-label="open history"
-              onClick={() => void openHistoryGated()}
-              className={`absolute${chevronFlash ? "" : " tempo-chevron-pulse"}`}
-              style={{
-                left: 0,
-                right: 0,
-                bottom: 0,
-                height: 60,
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                zIndex: 25,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                touchAction: "manipulation",
-              }}
-              initial={{ opacity: 0 }}
-              animate={chevronFlash ? { opacity: 1 } : { opacity: undefined }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: chevronFlash ? 0.18 : 0.4 }}
-            >
-              <svg width="24" height="14" viewBox="0 0 24 14" fill="none" stroke={chevronFlash ? accentHex : "#F5F0E8"} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: chevronFlash ? 1 : 0.5 }}>
-                <polyline points="3 11 12 4 21 11" />
-              </svg>
-            </motion.button>
-          )}
-        </AnimatePresence>
+        {/* History button — "history" text, CSS opacity */}
+        <button
+          aria-label="open history"
+          onClick={() => void openHistoryGated()}
+          className="absolute font-mono"
+          style={{
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: 60,
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            zIndex: 25,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            touchAction: "manipulation",
+            opacity: historyVisible ? 1 : 0,
+            pointerEvents: historyVisible ? "auto" : "none",
+            transition: "opacity 0.4s ease",
+            color: historyFlash ? accentHex : "#F5F0E8",
+          }}
+        >
+          <span style={{
+            fontSize: "0.7rem",
+            letterSpacing: "0.12em",
+            opacity: historyFlash ? 1 : 0.35,
+            transition: "color 0.2s ease, opacity 0.2s ease",
+          }}>
+            history
+          </span>
+        </button>
 
-        {/* Auth error toast */}
-        <AnimatePresence>
-          {authError && (
-            <motion.div
-              key="auth-error"
-              layout={false}
-              className="absolute left-0 right-0 flex justify-center font-mono"
-              style={{ bottom: 80, zIndex: 30, color: accentHex, fontSize: 10, letterSpacing: "0.3em" }}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 8 }}
-              transition={{ duration: 0.25 }}
-            >
-              {authError}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Auth error toast — CSS opacity/transform */}
+        <div
+          className="absolute left-0 right-0 flex justify-center font-mono"
+          style={{
+            bottom: 80,
+            zIndex: 30,
+            color: accentHex,
+            fontSize: 10,
+            letterSpacing: "0.3em",
+            pointerEvents: "none",
+            opacity: authError ? 1 : 0,
+            transform: authError ? "translateY(0)" : "translateY(8px)",
+            transition: "opacity 0.25s ease, transform 0.25s ease",
+          }}
+        >
+          {authError}
+        </div>
 
         {/* Touch zone */}
         <div
@@ -591,7 +579,7 @@ export function TimerScreen() {
         <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       </main>
 
-      {/* History — stacked positional panel, always mounted, slides over */}
+      {/* History panel — always mounted, slides over */}
       <History
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}

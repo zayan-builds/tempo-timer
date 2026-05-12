@@ -146,7 +146,7 @@ function Row({ solve, isPB, pendingDelete, onSwipeDelete, onShare, accentHex }: 
           className="font-mono"
           style={{
             color: "#F5F0E8",
-            fontSize: 22,
+            fontSize: "clamp(13px, 4vw, 1rem)",
             lineHeight: 1.1,
             fontVariantNumeric: "tabular-nums",
             letterSpacing: "0.04em",

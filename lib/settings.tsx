@@ -13,24 +13,16 @@ export type AccentName =
   | "blue"
   | "green"
   | "red"
-  | "white"
   | "purple"
-  | "rose"
-  | "gold"
-  | "teal"
-  | "orange";
+  | "white";
 
 export const ACCENT_HEX: Record<AccentName, string> = {
   amber: "#C8853A",
-  blue: "#5B8DBF",
-  green: "#6FA86F",
-  red: "#C8553A",
-  white: "#F5F0E8",
+  blue: "#4A90D9",
+  green: "#4CAF50",
+  red: "#E53935",
   purple: "#9B59B6",
-  rose: "#E91E8C",
-  gold: "#F1C40F",
-  teal: "#1ABC9C",
-  orange: "#E67E22",
+  white: "#F5F0E8",
 };
 
 export type Settings = {
