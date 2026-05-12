@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Solve } from "@/hooks/useHistory";
 import { formatTime, isValidFormatted } from "@/lib/format";
 import { getComparison } from "@/lib/comparison";
@@ -248,6 +248,17 @@ function Row({ solve, isPB, onSwipeDelete, onShare, accentHex }: RowProps) {
 }
 
 export function History({ open, onClose, solves, onDelete, onClearAll, accentHex }: Props) {
+  // One-frame delay so the browser paints translateY(100%) before animating to 0.
+  const [animOpen, setAnimOpen] = useState(false);
+  useEffect(() => {
+    if (open) {
+      const id = requestAnimationFrame(() => setAnimOpen(true));
+      return () => cancelAnimationFrame(id);
+    } else {
+      setAnimOpen(false);
+    }
+  }, [open]);
+
   const validSolves = useMemo(
     () => solves.filter((s) => typeof s.time_ms === "number" && s.time_ms > 0 && isValidFormatted(formatTime(s.time_ms))),
     [solves],
@@ -363,8 +374,8 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
         background: "#000",
         borderTopLeftRadius: 16,
         borderTopRightRadius: 16,
-        transform: `translate3d(0, ${open ? "0" : "100%"}, 0)`,
-        transition: "transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)",
+        transform: `translate3d(0, ${animOpen ? "0" : "100%"}, 0)`,
+        transition: "transform 320ms cubic-bezier(0.32, 0.72, 0, 1)",
         willChange: "transform",
         pointerEvents: open ? "auto" : "none",
         display: "flex",
