@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { Solve } from "@/hooks/useHistory";
 import { formatTime, isValidFormatted } from "@/lib/format";
 import { getComparison } from "@/lib/comparison";
+import { triggerHaptic } from "@/lib/haptics";
 import { ShareCard } from "./ShareCard";
 
 type Props = {
@@ -19,6 +20,7 @@ type Group = { label: string; items: Solve[] };
 
 const DELETE_WIDTH = 72;
 const DELETE_RED = "#C0392B";
+const SIDE_PAD = 24;
 
 function startOfDay(ts: number): number {
   const d = new Date(ts);
@@ -61,27 +63,43 @@ function isThisWeek(ts: number): boolean {
 
 type RowProps = {
   solve: Solve;
-  index: number;
   isPB: boolean;
   revealed: boolean;
+  collapsing: boolean;
   onReveal: (id: string | null) => void;
   onDelete: (id: string) => void;
   onShare: (s: Solve) => void;
   accentHex: string;
 };
 
-function Row({ solve, index, isPB, revealed, onReveal, onDelete, onShare, accentHex }: RowProps) {
+function Row({ solve, isPB, revealed, collapsing, onReveal, onDelete, onShare, accentHex }: RowProps) {
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revealedFiredRef = useRef(false);
 
+  function fireRevealHaptic() {
+    if (revealedFiredRef.current) return;
+    revealedFiredRef.current = true;
+    void triggerHaptic("armed");
+  }
+
+  function handleDragStart() {
+    revealedFiredRef.current = false;
+    onReveal(solve.id);
+  }
+  function handleDrag(_: unknown, info: PanInfo) {
+    if (info.offset.x < -DELETE_WIDTH / 2) fireRevealHaptic();
+  }
   function handleDragEnd(_: unknown, info: PanInfo) {
-    if (info.offset.x < -36) onReveal(solve.id);
-    else if (revealed && info.offset.x > 36) onReveal(null);
-    else onReveal(revealed ? solve.id : null);
+    if (info.offset.x < -DELETE_WIDTH / 2) onReveal(solve.id);
+    else onReveal(null);
   }
 
   function pressStart() {
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
-    longPressTimer.current = setTimeout(() => onReveal(solve.id), 500);
+    longPressTimer.current = setTimeout(() => {
+      fireRevealHaptic();
+      onReveal(solve.id);
+    }, 500);
   }
   function pressEnd() {
     if (longPressTimer.current) {
@@ -92,14 +110,12 @@ function Row({ solve, index, isPB, revealed, onReveal, onDelete, onShare, accent
 
   return (
     <div
-      className="tempo-row-in"
+      className={collapsing ? "tempo-row-collapse" : "tempo-row-in"}
       style={{
         position: "relative",
         overflow: "hidden",
-        animationDelay: `${index * 40}ms`,
       }}
     >
-      {/* Delete button behind */}
       <button
         onClick={(e) => {
           e.stopPropagation();
@@ -125,12 +141,14 @@ function Row({ solve, index, isPB, revealed, onReveal, onDelete, onShare, accent
         del
       </button>
 
-      {/* Swipeable row */}
       <motion.div
+        layout={false}
         drag="x"
         dragConstraints={{ left: -DELETE_WIDTH, right: 0 }}
-        dragElastic={0.15}
+        dragElastic={0.3}
         dragMomentum={false}
+        onDragStart={handleDragStart}
+        onDrag={handleDrag}
         onDragEnd={handleDragEnd}
         animate={{ x: revealed ? -DELETE_WIDTH : 0 }}
         transition={{ type: "spring", stiffness: 320, damping: 32 }}
@@ -138,10 +156,12 @@ function Row({ solve, index, isPB, revealed, onReveal, onDelete, onShare, accent
         onPointerUp={pressEnd}
         onPointerCancel={pressEnd}
         onPointerLeave={pressEnd}
-        className="flex items-baseline justify-between"
+        className="flex items-center justify-between"
         style={{
           paddingTop: 10,
           paddingBottom: 10,
+          paddingLeft: SIDE_PAD,
+          paddingRight: SIDE_PAD,
           background: "#000",
           position: "relative",
           zIndex: 1,
@@ -155,11 +175,12 @@ function Row({ solve, index, isPB, revealed, onReveal, onDelete, onShare, accent
             fontSize: 30,
             lineHeight: 1.05,
             fontVariantNumeric: "tabular-nums",
+            textAlign: "left",
           }}
         >
           {formatTime(solve.time_ms)}
         </span>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center" style={{ gap: 10 }}>
           {isPB && (
             <span
               className="font-mono"
@@ -184,9 +205,8 @@ function Row({ solve, index, isPB, revealed, onReveal, onDelete, onShare, accent
               background: "transparent",
               border: "none",
               cursor: "pointer",
-              opacity: 0.3,
+              opacity: 0.4,
               padding: 4,
-              marginLeft: 4,
               display: "flex",
               alignItems: "center",
             }}
@@ -235,24 +255,37 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
   );
 
   const [revealedFor, setRevealedFor] = useState<string | null>(null);
+  const [collapsingId, setCollapsingId] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const [shareData, setShareData] = useState<{ solve: Solve; isPB: boolean; comparison: string } | null>(null);
   const shareRef = useRef<HTMLDivElement>(null);
 
   const startYRef = useRef<number | null>(null);
+  const scrollTopRef = useRef(0);
 
   function onPointerDownContainer(e: React.PointerEvent) {
+    scrollTopRef.current = (e.currentTarget as HTMLElement).scrollTop;
     startYRef.current = e.clientY;
   }
   function onPointerMoveContainer(e: React.PointerEvent) {
     if (startYRef.current === null) return;
-    if (e.clientY - startYRef.current > 80) {
+    if (scrollTopRef.current > 4) return;
+    if (e.clientY - startYRef.current > 60) {
       startYRef.current = null;
       onClose();
     }
   }
   function onPointerUpContainer() {
     startYRef.current = null;
+  }
+
+  function handleDeleteWithCollapse(id: string) {
+    setCollapsingId(id);
+    setTimeout(() => {
+      onDelete(id);
+      setRevealedFor(null);
+      setCollapsingId(null);
+    }, 300);
   }
 
   const handleShare = useCallback(
@@ -289,298 +322,298 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
   );
 
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          className="fixed inset-0 z-40 overflow-y-auto"
-          style={{
-            background: "rgba(0, 0, 0, 0.98)",
-            backdropFilter: "blur(10px)",
-            WebkitBackdropFilter: "blur(10px)",
-          }}
-          initial={{ opacity: 0, y: "100%" }}
-          animate={{ opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 30 } }}
-          exit={{ opacity: 0, y: 80, transition: { duration: 0.3, ease: "easeIn" } }}
-          onPointerDown={onPointerDownContainer}
-          onPointerMove={onPointerMoveContainer}
-          onPointerUp={onPointerUpContainer}
-          onPointerCancel={onPointerUpContainer}
-          onClick={() => setRevealedFor(null)}
+    <div
+      aria-hidden={!open}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 40,
+        background: "#000",
+        transform: `translate3d(0, ${open ? "0" : "100%"}, 0)`,
+        transition: "transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+        willChange: "transform",
+        pointerEvents: open ? "auto" : "none",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div
+        className="overflow-y-auto"
+        style={{
+          flex: 1,
+          WebkitOverflowScrolling: "touch",
+        }}
+        onPointerDown={onPointerDownContainer}
+        onPointerMove={onPointerMoveContainer}
+        onPointerUp={onPointerUpContainer}
+        onPointerCancel={onPointerUpContainer}
+        onClick={() => setRevealedFor(null)}
+      >
+        <div
+          className="max-w-md mx-auto"
+          style={{ paddingTop: 56, paddingBottom: totalSolves > 0 ? 110 : 80 }}
+          onClick={(e) => e.stopPropagation()}
         >
           <div
-            className="max-w-md mx-auto px-8"
-            style={{ paddingTop: 56, paddingBottom: totalSolves > 0 ? 110 : 80 }}
-            onClick={(e) => e.stopPropagation()}
+            className="flex items-center justify-between"
+            style={{ marginBottom: 28, paddingLeft: SIDE_PAD, paddingRight: SIDE_PAD }}
           >
-            <div className="flex items-center justify-between" style={{ marginBottom: 28 }}>
+            <span
+              className="font-mono italic"
+              style={{ color: "#F5F0E8", fontSize: 11, letterSpacing: "0.3em", opacity: 0.85 }}
+            >
+              history
+            </span>
+            <button
+              onClick={onClose}
+              className="font-mono"
+              style={{
+                color: accentHex,
+                fontSize: 11,
+                letterSpacing: "0.3em",
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              close
+            </button>
+          </div>
+
+          {totalSolves > 0 && (
+            <div
+              className="flex items-center justify-start"
+              style={{
+                marginBottom: 40,
+                paddingLeft: SIDE_PAD,
+                paddingRight: SIDE_PAD,
+                gap: 10,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+              }}
+            >
               <span
-                className="font-mono italic"
-                style={{ color: "#F5F0E8", fontSize: 11, letterSpacing: "0.3em", opacity: 0.85 }}
+                className="font-serif italic"
+                style={{ color: "#F5F0E8", fontSize: 15, opacity: 0.85, whiteSpace: "nowrap" }}
               >
-                history
+                {totalSolves} {totalSolves === 1 ? "solve" : "solves"}
               </span>
-              <button
-                onClick={onClose}
+              <span style={{ color: "#F5F0E8", opacity: 0.25, fontSize: 8 }}>·</span>
+              {personalBest !== null && (
+                <>
+                  <span
+                    className="font-mono"
+                    style={{ color: accentHex, fontSize: 10, letterSpacing: "0.08em", whiteSpace: "nowrap" }}
+                  >
+                    best {formatTime(personalBest)}
+                  </span>
+                  <span style={{ color: "#F5F0E8", opacity: 0.25, fontSize: 8 }}>·</span>
+                </>
+              )}
+              <span
+                className="font-mono"
+                style={{ color: "#F5F0E8", fontSize: 10, opacity: 0.4, letterSpacing: "0.06em", whiteSpace: "nowrap" }}
+              >
+                {thisWeekCount} this week
+              </span>
+            </div>
+          )}
+
+          {reversed.length === 0 && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                textAlign: "center",
+                paddingTop: 80,
+                paddingLeft: SIDE_PAD,
+                paddingRight: SIDE_PAD,
+              }}
+            >
+              <p
+                className="font-serif italic"
+                style={{ color: "#F5F0E8", opacity: 0.4, fontSize: 32, margin: 0, textAlign: "center" }}
+              >
+                no solves yet
+              </p>
+              <p
                 className="font-mono"
                 style={{
-                  color: accentHex,
-                  fontSize: 11,
-                  letterSpacing: "0.3em",
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: 0,
-                }}
-              >
-                close
-              </button>
-            </div>
-
-            {totalSolves > 0 && (
-              <div
-                className="flex items-center justify-start"
-                style={{
-                  marginBottom: 40,
-                  gap: 10,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                }}
-              >
-                <span
-                  className="font-serif italic"
-                  style={{ color: "#F5F0E8", fontSize: 15, opacity: 0.85, whiteSpace: "nowrap" }}
-                >
-                  {totalSolves} {totalSolves === 1 ? "solve" : "solves"}
-                </span>
-                <span style={{ color: "#F5F0E8", opacity: 0.25, fontSize: 8 }}>·</span>
-                {personalBest !== null && (
-                  <>
-                    <span
-                      className="font-mono"
-                      style={{ color: accentHex, fontSize: 10, letterSpacing: "0.08em", whiteSpace: "nowrap" }}
-                    >
-                      best {formatTime(personalBest)}
-                    </span>
-                    <span style={{ color: "#F5F0E8", opacity: 0.25, fontSize: 8 }}>·</span>
-                  </>
-                )}
-                <span
-                  className="font-mono"
-                  style={{ color: "#F5F0E8", fontSize: 10, opacity: 0.4, letterSpacing: "0.06em", whiteSpace: "nowrap" }}
-                >
-                  {thisWeekCount} this week
-                </span>
-              </div>
-            )}
-
-            {reversed.length === 0 && (
-              <div
-                style={{
-                  position: "fixed",
-                  inset: 0,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  pointerEvents: "none",
+                  color: "#F5F0E8",
+                  opacity: 0.25,
+                  fontSize: 10,
+                  letterSpacing: "0.18em",
+                  marginTop: 16,
                   textAlign: "center",
                 }}
               >
-                <p
-                  className="font-serif italic"
+                complete your first solve to see history
+              </p>
+            </div>
+          )}
+
+          {groups.map((g) => (
+            <div key={g.label} style={{ marginBottom: 36 }}>
+              <p
+                className="font-mono"
+                style={{
+                  color: "#F5F0E8",
+                  opacity: 0.35,
+                  fontSize: 10,
+                  letterSpacing: "0.3em",
+                  marginBottom: 14,
+                  paddingLeft: SIDE_PAD,
+                  paddingRight: SIDE_PAD,
+                  textAlign: "left",
+                }}
+              >
+                {g.label}
+              </p>
+              <AnimatePresence initial={true}>
+                {g.items.map((s) => (
+                  <Row
+                    key={s.id}
+                    solve={s}
+                    isPB={pbIds.has(s.id)}
+                    revealed={revealedFor === s.id}
+                    collapsing={collapsingId === s.id}
+                    onReveal={setRevealedFor}
+                    onDelete={handleDeleteWithCollapse}
+                    onShare={handleShare}
+                    accentHex={accentHex}
+                  />
+                ))}
+              </AnimatePresence>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {totalSolves > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            display: "flex",
+            justifyContent: "center",
+            paddingTop: 14,
+            paddingBottom: 22,
+            background:
+              "linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 60%, rgba(0,0,0,0) 100%)",
+            zIndex: 45,
+            pointerEvents: "none",
+          }}
+        >
+          <button
+            onClick={() => setConfirmClear(true)}
+            className="font-mono"
+            style={{
+              color: DELETE_RED,
+              opacity: 0.55,
+              fontSize: 10,
+              letterSpacing: "0.3em",
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              padding: "8px 16px",
+              pointerEvents: "auto",
+            }}
+          >
+            clear all
+          </button>
+        </div>
+      )}
+
+      {shareData && (
+        <div
+          style={{
+            position: "fixed",
+            left: -20000,
+            top: 0,
+            pointerEvents: "none",
+          }}
+        >
+          <ShareCard
+            ref={shareRef}
+            timeMs={shareData.solve.time_ms}
+            isPB={shareData.isPB}
+            comparison={shareData.comparison}
+            event={(shareData.solve.event || "3x3").replace("x", "×")}
+            accentHex={accentHex}
+          />
+        </div>
+      )}
+
+      <AnimatePresence>
+        {confirmClear && (
+          <motion.div
+            className="fixed inset-0 z-[55] flex items-center justify-center"
+            style={{
+              background: "rgba(0, 0, 0, 0.95)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+              paddingLeft: SIDE_PAD,
+              paddingRight: SIDE_PAD,
+            }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center">
+              <p
+                className="font-serif italic text-center"
+                style={{ color: "#F5F0E8", fontSize: 26, marginBottom: 48 }}
+              >
+                delete all solves?
+              </p>
+              <div className="flex items-center" style={{ gap: 40 }}>
+                <button
+                  onClick={() => {
+                    onClearAll();
+                    setRevealedFor(null);
+                    setConfirmClear(false);
+                  }}
+                  className="font-mono"
                   style={{
-                    color: "#F5F0E8",
-                    opacity: 0.4,
-                    fontSize: 32,
-                    padding: "0 32px",
-                    textAlign: "center",
-                    margin: 0,
+                    color: DELETE_RED,
+                    fontSize: 12,
+                    letterSpacing: "0.3em",
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0,
                   }}
                 >
-                  no solves yet
-                </p>
-                <p
+                  yes, clear
+                </button>
+                <button
+                  onClick={() => setConfirmClear(false)}
                   className="font-mono"
                   style={{
                     color: "#F5F0E8",
-                    opacity: 0.25,
-                    fontSize: 10,
-                    letterSpacing: "0.18em",
-                    marginTop: 16,
-                    padding: "0 32px",
-                    textAlign: "center",
+                    opacity: 0.5,
+                    fontSize: 12,
+                    letterSpacing: "0.3em",
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0,
                   }}
                 >
-                  complete your first solve to see history
-                </p>
+                  cancel
+                </button>
               </div>
-            )}
-
-            {(() => {
-              let idx = 0;
-              return groups.map((g) => (
-                <div key={g.label} style={{ marginBottom: 36 }}>
-                  <p
-                    className="font-mono"
-                    style={{
-                      color: "#F5F0E8",
-                      opacity: 0.35,
-                      fontSize: 10,
-                      letterSpacing: "0.3em",
-                      marginBottom: 14,
-                    }}
-                  >
-                    {g.label}
-                  </p>
-                  <AnimatePresence initial={true}>
-                    {g.items.map((s) => {
-                      const i = idx++;
-                      return (
-                        <Row
-                          key={s.id}
-                          solve={s}
-                          index={i}
-                          isPB={pbIds.has(s.id)}
-                          revealed={revealedFor === s.id}
-                          onReveal={setRevealedFor}
-                          onDelete={onDelete}
-                          onShare={handleShare}
-                          accentHex={accentHex}
-                        />
-                      );
-                    })}
-                  </AnimatePresence>
-                </div>
-              ));
-            })()}
-          </div>
-
-          {/* Fixed clear-all footer */}
-          {totalSolves > 0 && (
-            <div
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                position: "fixed",
-                left: 0,
-                right: 0,
-                bottom: 0,
-                display: "flex",
-                justifyContent: "center",
-                paddingTop: 14,
-                paddingBottom: 22,
-                background:
-                  "linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 60%, rgba(0,0,0,0) 100%)",
-                zIndex: 45,
-                pointerEvents: "none",
-              }}
-            >
-              <button
-                onClick={() => setConfirmClear(true)}
-                className="font-mono"
-                style={{
-                  color: DELETE_RED,
-                  opacity: 0.55,
-                  fontSize: 10,
-                  letterSpacing: "0.3em",
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: "8px 16px",
-                  pointerEvents: "auto",
-                }}
-              >
-                clear all
-              </button>
             </div>
-          )}
-
-          {/* Off-screen share card */}
-          {shareData && (
-            <div
-              style={{
-                position: "fixed",
-                left: -20000,
-                top: 0,
-                pointerEvents: "none",
-              }}
-            >
-              <ShareCard
-                ref={shareRef}
-                timeMs={shareData.solve.time_ms}
-                isPB={shareData.isPB}
-                comparison={shareData.comparison}
-                event={(shareData.solve.event || "3x3").replace("x", "×")}
-                accentHex={accentHex}
-              />
-            </div>
-          )}
-
-          {/* Confirm clear overlay */}
-          <AnimatePresence>
-            {confirmClear && (
-              <motion.div
-                className="fixed inset-0 z-[55] flex items-center justify-center px-8"
-                style={{
-                  background: "rgba(0, 0, 0, 0.95)",
-                  backdropFilter: "blur(10px)",
-                  WebkitBackdropFilter: "blur(10px)",
-                }}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex flex-col items-center">
-                  <p
-                    className="font-serif italic text-center"
-                    style={{ color: "#F5F0E8", fontSize: 26, marginBottom: 48 }}
-                  >
-                    delete all solves?
-                  </p>
-                  <div className="flex gap-10 items-center">
-                    <button
-                      onClick={() => {
-                        onClearAll();
-                        setRevealedFor(null);
-                        setConfirmClear(false);
-                      }}
-                      className="font-mono"
-                      style={{
-                        color: DELETE_RED,
-                        fontSize: 12,
-                        letterSpacing: "0.3em",
-                        background: "transparent",
-                        border: "none",
-                        cursor: "pointer",
-                        padding: 0,
-                      }}
-                    >
-                      yes, clear
-                    </button>
-                    <button
-                      onClick={() => setConfirmClear(false)}
-                      className="font-mono"
-                      style={{
-                        color: "#F5F0E8",
-                        opacity: 0.5,
-                        fontSize: 12,
-                        letterSpacing: "0.3em",
-                        background: "transparent",
-                        border: "none",
-                        cursor: "pointer",
-                        padding: 0,
-                      }}
-                    >
-                      cancel
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
-      )}
-    </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
