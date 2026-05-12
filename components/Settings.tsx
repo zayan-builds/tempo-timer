@@ -320,13 +320,35 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                   />
                 </Row>
 
-                <Row label="LOCK HISTORY" withDivider={false}>
-                  <Toggle
-                    on={settings.lockHistory}
-                    onChange={(v) => (v ? enableLock() : requestDisableLock())}
-                    accentHex={accentHex}
-                  />
-                </Row>
+                <div style={{ paddingTop: 20, paddingBottom: 20 }}>
+                  <div className="flex items-center justify-between">
+                    <span
+                      className="font-mono"
+                      style={{ fontSize: 13, letterSpacing: "0.16em", color: "#F5F0E8", opacity: 0.85 }}
+                    >
+                      LOCK HISTORY
+                    </span>
+                    <Toggle
+                      on={settings.lockHistory}
+                      onChange={(v) => (v ? enableLock() : requestDisableLock())}
+                      accentHex={accentHex}
+                    />
+                  </div>
+                  {settings.lockHistory && settings.lockMethod !== "none" && (
+                    <p
+                      className="font-mono"
+                      style={{
+                        marginTop: 6,
+                        color: accentHex,
+                        opacity: 0.7,
+                        fontSize: 9,
+                        letterSpacing: "0.2em",
+                      }}
+                    >
+                      secured with {settings.lockMethod === "biometric" ? "fingerprint" : "PIN"}
+                    </p>
+                  )}
+                </div>
               </div>
 
               <p
@@ -388,7 +410,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     letterSpacing: "0.18em",
                   }}
                 >
-                  v0.1.2
+                  v0.1.3
                 </p>
               </div>
 
