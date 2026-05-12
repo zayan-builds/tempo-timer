@@ -4,8 +4,16 @@ const config: CapacitorConfig = {
   appId: 'com.zayan.tempo',
   appName: 'Tempo',
   webDir: 'out',
+  server: {
+    androidScheme: 'https',
+    allowNavigation: [
+      'api.github.com',
+      'objects.githubusercontent.com',
+      'github.com',
+    ],
+  },
   android: {
-    backgroundColor: '#000000'
+    backgroundColor: '#000000',
   },
   plugins: {
     SplashScreen: {

@@ -1,5 +1,4 @@
 "use client";
-import { motion, AnimatePresence } from "framer-motion";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Solve } from "@/hooks/useHistory";
 import { formatTime, isValidFormatted } from "@/lib/format";
@@ -69,34 +68,64 @@ type RowProps = {
 };
 
 function Row({ solve, isPB, pendingDelete, onSwipeDelete, onShare, accentHex }: RowProps) {
-  const dragX = useRef(0);
+  const innerRef = useRef<HTMLDivElement>(null);
+  const startXRef = useRef(0);
+  const currentXRef = useRef(0);
+  const draggingRef = useRef(false);
+
+  function applyTranslate(x: number, withTransition: boolean) {
+    const el = innerRef.current;
+    if (!el) return;
+    el.style.transition = withTransition ? "transform 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease" : "none";
+    el.style.transform = `translateX(${x}px)`;
+    el.style.opacity = x < -20 ? String(Math.max(0, 1 + x / 200)) : "1";
+  }
+
+  function onPointerDown(e: React.PointerEvent) {
+    if (pendingDelete) return;
+    if ((e.target as HTMLElement).closest("button")) return;
+    startXRef.current = e.clientX;
+    currentXRef.current = 0;
+    draggingRef.current = false;
+    innerRef.current?.setPointerCapture(e.pointerId);
+  }
+
+  function onPointerMove(e: React.PointerEvent) {
+    if (!innerRef.current?.hasPointerCapture(e.pointerId)) return;
+    const dx = e.clientX - startXRef.current;
+    if (!draggingRef.current) {
+      if (Math.abs(dx) < 6) return;
+      draggingRef.current = true;
+    }
+    const clamped = Math.min(0, dx);
+    currentXRef.current = clamped;
+    applyTranslate(clamped, false);
+  }
+
+  function onPointerUp(e: React.PointerEvent) {
+    if (!draggingRef.current) return;
+    if (currentXRef.current < -SWIPE_THRESHOLD) {
+      applyTranslate(-420, true);
+      onSwipeDelete(solve.id);
+    } else {
+      applyTranslate(0, true);
+    }
+    draggingRef.current = false;
+  }
 
   return (
     <div
       style={{
         overflow: "hidden",
         maxHeight: pendingDelete ? "0px" : "80px",
-        transition: pendingDelete ? "max-height 220ms cubic-bezier(0.4,0,0.2,1)" : "none",
+        opacity: pendingDelete ? 0 : 1,
+        transition: pendingDelete
+          ? "max-height 240ms cubic-bezier(0.4,0,0.2,1) 120ms, opacity 120ms ease"
+          : "none",
       }}
     >
-      <motion.div
-        layout={false}
-        drag="x"
-        dragConstraints={{ left: -400, right: 0 }}
-        dragElastic={0}
-        dragMomentum={false}
-        onDrag={(_, info) => { dragX.current = info.offset.x; }}
-        onDragEnd={() => {
-          if (dragX.current < -SWIPE_THRESHOLD) {
-            onSwipeDelete(solve.id);
-          }
-        }}
-        animate={pendingDelete ? { x: -420, opacity: 0 } : { x: 0, opacity: 1 }}
-        transition={
-          pendingDelete
-            ? { duration: 0.22, ease: [0.4, 0, 0.2, 1] }
-            : { type: "spring", stiffness: 400, damping: 40 }
-        }
+      <div
+        ref={innerRef}
         className="flex items-center justify-between"
         style={{
           paddingTop: 10,
@@ -106,15 +135,21 @@ function Row({ solve, isPB, pendingDelete, onSwipeDelete, onShare, accentHex }: 
           background: "#000",
           touchAction: "pan-y",
           cursor: "default",
+          willChange: "transform",
         }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
       >
         <span
-          className="font-serif italic"
+          className="font-mono"
           style={{
             color: "#F5F0E8",
-            fontSize: 30,
-            lineHeight: 1.05,
+            fontSize: 22,
+            lineHeight: 1.1,
             fontVariantNumeric: "tabular-nums",
+            letterSpacing: "0.04em",
             textAlign: "left",
             userSelect: "none",
           }}
@@ -157,7 +192,7 @@ function Row({ solve, isPB, pendingDelete, onSwipeDelete, onShare, accentHex }: 
             </svg>
           </button>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }
@@ -203,17 +238,15 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
     const solve = validSolves.find((s) => s.id === id);
     if (!solve) return;
     setPendingDeleteId(id);
-    // Give animation time to play, then commit
+    if (undoState) {
+      clearTimeout(undoState.timerId);
+      onDelete(undoState.solve.id);
+    }
     const timerId = setTimeout(() => {
       onDelete(id);
       setPendingDeleteId(null);
       setUndoState(null);
     }, 3000);
-    // Cancel previous undo if any
-    if (undoState) {
-      clearTimeout(undoState.timerId);
-      onDelete(undoState.solve.id); // commit previous
-    }
     setUndoState({ solve, timerId });
   }
 
@@ -222,7 +255,6 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
     clearTimeout(undoState.timerId);
     setPendingDeleteId(null);
     setUndoState(null);
-    // The solve was never actually deleted (we deferred onDelete) — just clearing pending state re-shows it
   }
 
   const handleShare = useCallback(
@@ -243,8 +275,8 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-      } catch (err) {
-        console.error("share failed", err);
+      } catch {
+        // share failed silently
       } finally {
         setShareData(null);
       }
@@ -260,7 +292,7 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
         bottom: 0,
         left: 0,
         right: 0,
-        zIndex: 40,
+        zIndex: 1000,
         height: "92dvh",
         background: "#000",
         borderTopLeftRadius: 16,
@@ -439,50 +471,43 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
       )}
 
       {/* Undo toast */}
-      <AnimatePresence>
-        {undoState && (
-          <motion.div
-            key="undo-toast"
-            style={{
-              position: "absolute",
-              bottom: 48,
-              left: "50%",
-              transform: "translateX(-50%)",
-              background: "rgba(30,30,30,0.96)",
-              border: "1px solid rgba(245,240,232,0.12)",
-              borderRadius: 8,
-              display: "flex",
-              alignItems: "center",
-              gap: 16,
-              padding: "10px 16px",
-              zIndex: 60,
-              backdropFilter: "blur(8px)",
-              WebkitBackdropFilter: "blur(8px)",
-              whiteSpace: "nowrap",
-              pointerEvents: "auto",
-            }}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 12 }}
-            transition={{ duration: 0.2 }}
-          >
-            <span className="font-mono" style={{ color: "#F5F0E8", opacity: 0.55, fontSize: 10, letterSpacing: "0.15em" }}>
-              solve deleted
-            </span>
-            <button
-              onClick={handleUndo}
-              className="font-mono"
-              style={{
-                color: accentHex, fontSize: 10, letterSpacing: "0.2em",
-                background: "transparent", border: "none", cursor: "pointer",
-                padding: 0, touchAction: "manipulation",
-              }}
-            >
-              undo
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div
+        style={{
+          position: "fixed",
+          bottom: 80,
+          left: "50%",
+          transform: undoState ? "translateX(-50%) translateY(0)" : "translateX(-50%) translateY(12px)",
+          background: "rgba(30,30,30,0.96)",
+          border: "1px solid rgba(245,240,232,0.12)",
+          borderRadius: 8,
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          padding: "10px 16px",
+          zIndex: 2000,
+          backdropFilter: "blur(8px)",
+          WebkitBackdropFilter: "blur(8px)",
+          whiteSpace: "nowrap",
+          pointerEvents: undoState ? "auto" : "none",
+          opacity: undoState ? 1 : 0,
+          transition: "opacity 0.2s ease, transform 0.2s ease",
+        }}
+      >
+        <span className="font-mono" style={{ color: "#F5F0E8", opacity: 0.55, fontSize: 10, letterSpacing: "0.15em" }}>
+          solve deleted
+        </span>
+        <button
+          onClick={handleUndo}
+          className="font-mono"
+          style={{
+            color: accentHex, fontSize: 10, letterSpacing: "0.2em",
+            background: "transparent", border: "none", cursor: "pointer",
+            padding: 0, touchAction: "manipulation",
+          }}
+        >
+          undo
+        </button>
+      </div>
 
       {/* Share card (off-screen) */}
       {shareData && (
@@ -499,53 +524,48 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
       )}
 
       {/* Confirm clear */}
-      <AnimatePresence>
-        {confirmClear && (
-          <motion.div
-            className="fixed inset-0 z-[55] flex items-center justify-center"
-            style={{
-              background: "rgba(0,0,0,0.95)",
-              backdropFilter: "blur(10px)",
-              WebkitBackdropFilter: "blur(10px)",
-              paddingLeft: SIDE_PAD,
-              paddingRight: SIDE_PAD,
-            }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex flex-col items-center">
-              <p className="font-serif italic text-center" style={{ color: "#F5F0E8", fontSize: 26, marginBottom: 48 }}>
-                delete all solves?
-              </p>
-              <div style={{ display: "flex", alignItems: "center", gap: 40 }}>
-                <button
-                  onClick={() => { onClearAll(); setConfirmClear(false); }}
-                  className="font-mono"
-                  style={{
-                    color: DELETE_RED, fontSize: 12, letterSpacing: "0.3em",
-                    background: "transparent", border: "none", cursor: "pointer", padding: 0, touchAction: "manipulation",
-                  }}
-                >
-                  yes, clear
-                </button>
-                <button
-                  onClick={() => setConfirmClear(false)}
-                  className="font-mono"
-                  style={{
-                    color: "#F5F0E8", opacity: 0.5, fontSize: 12, letterSpacing: "0.3em",
-                    background: "transparent", border: "none", cursor: "pointer", padding: 0, touchAction: "manipulation",
-                  }}
-                >
-                  cancel
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div
+        className="fixed inset-0 z-[55] flex items-center justify-center"
+        style={{
+          background: "rgba(0,0,0,0.95)",
+          backdropFilter: "blur(10px)",
+          WebkitBackdropFilter: "blur(10px)",
+          paddingLeft: SIDE_PAD,
+          paddingRight: SIDE_PAD,
+          opacity: confirmClear ? 1 : 0,
+          pointerEvents: confirmClear ? "auto" : "none",
+          transition: "opacity 0.2s ease",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex flex-col items-center">
+          <p className="font-serif italic text-center" style={{ color: "#F5F0E8", fontSize: 26, marginBottom: 48 }}>
+            delete all solves?
+          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 40 }}>
+            <button
+              onClick={() => { onClearAll(); setConfirmClear(false); }}
+              className="font-mono"
+              style={{
+                color: DELETE_RED, fontSize: 12, letterSpacing: "0.3em",
+                background: "transparent", border: "none", cursor: "pointer", padding: 0, touchAction: "manipulation",
+              }}
+            >
+              yes, clear
+            </button>
+            <button
+              onClick={() => setConfirmClear(false)}
+              className="font-mono"
+              style={{
+                color: "#F5F0E8", opacity: 0.5, fontSize: 12, letterSpacing: "0.3em",
+                background: "transparent", border: "none", cursor: "pointer", padding: 0, touchAction: "manipulation",
+              }}
+            >
+              cancel
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,5 +1,4 @@
 "use client";
-import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { ACCENT_HEX, AccentName, useSettings } from "@/lib/settings";
 import { checkForUpdate, subscribeUpdater, UpdaterStatus } from "@/lib/updater";
@@ -182,27 +181,25 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
 
   return (
     <>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            className="fixed inset-0 z-50 overflow-y-auto"
-            style={{
-              background: "rgba(0, 0, 0, 0.97)",
-              backdropFilter: "blur(8px)",
-              WebkitBackdropFilter: "blur(8px)",
-              WebkitOverflowScrolling: "touch",
-            }}
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 24 }}
-            transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
-            onClick={onClose}
-          >
-            <div
-              className="max-w-sm mx-auto"
-              style={{ paddingTop: 80, paddingBottom: 80, paddingLeft: 24, paddingRight: 24 }}
-              onClick={(e) => e.stopPropagation()}
-            >
+      <div
+        className="fixed inset-0 z-50 overflow-y-auto"
+        style={{
+          background: "rgba(0, 0, 0, 0.97)",
+          backdropFilter: "blur(8px)",
+          WebkitBackdropFilter: "blur(8px)",
+          WebkitOverflowScrolling: "touch",
+          opacity: open ? 1 : 0,
+          transform: open ? "translateY(0)" : "translateY(24px)",
+          pointerEvents: open ? "auto" : "none",
+          transition: "opacity 0.28s cubic-bezier(0.4,0,0.2,1), transform 0.28s cubic-bezier(0.4,0,0.2,1)",
+        }}
+        onClick={onClose}
+      >
+        <div
+          className="max-w-sm mx-auto"
+          style={{ paddingTop: 80, paddingBottom: 80, paddingLeft: 24, paddingRight: 24 }}
+          onClick={(e) => e.stopPropagation()}
+        >
               <p
                 className="font-mono"
                 style={{ color: accentHex, fontSize: 11, letterSpacing: "0.3em", marginBottom: 24 }}
@@ -244,36 +241,29 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                   >
                     <Toggle on={settings.proMode} onChange={(v) => update("proMode", v)} accentHex={accentHex} />
                   </Row>
-                  <AnimatePresence initial={false}>
-                    {proExplainerOpen && (
-                      <motion.div
-                        key="pro-explainer"
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
-                        style={{ overflow: "hidden" }}
-                      >
-                        <p
-                          className="font-mono"
-                          style={{
-                            color: "#F5F0E8",
-                            opacity: 0.55,
-                            fontSize: 11,
-                            lineHeight: 1.7,
-                            letterSpacing: "0.04em",
-                            paddingBottom: 18,
-                          }}
-                        >
-                          Pro Mode shows a scramble at the top before each solve. A scramble is a sequence of moves that randomizes your cube so every solve starts from a fair position.
-                          {"\n\n"}
-                          It also tracks ao5 and ao12: your rolling average across your last 5 and 12 solves. These show your consistent speed, not just your best time.
-                          {"\n\n"}
-                          Recommended once you can solve reliably under 2 minutes.
-                        </p>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                  <div
+                    style={{
+                      overflow: "hidden",
+                      maxHeight: proExplainerOpen ? 200 : 0,
+                      opacity: proExplainerOpen ? 1 : 0,
+                      transition: "max-height 0.28s cubic-bezier(0.4,0,0.2,1), opacity 0.28s cubic-bezier(0.4,0,0.2,1)",
+                    }}
+                  >
+                    <p
+                      className="font-mono"
+                      style={{
+                        color: "#F5F0E8",
+                        opacity: 0.55,
+                        fontSize: 11,
+                        lineHeight: 1.7,
+                        letterSpacing: "0.04em",
+                        paddingBottom: 18,
+                        whiteSpace: "pre-line",
+                      }}
+                    >
+                      {`Pro Mode shows a scramble at the top before each solve. A scramble is a sequence of moves that randomizes your cube so every solve starts from a fair position.\n\nIt also tracks ao5 and ao12: your rolling average across your last 5 and 12 solves. These show your consistent speed, not just your best time.\n\nRecommended once you can solve reliably under 2 minutes.`}
+                    </p>
+                  </div>
                 </div>
 
                 <Row
@@ -461,7 +451,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     letterSpacing: "0.18em",
                   }}
                 >
-                  v0.1.3
+                  v0.1.5
                 </p>
               </div>
 
@@ -484,27 +474,20 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                 >
                   check for updates
                 </button>
-                <AnimatePresence>
-                  {updateStatus && (
-                    <motion.p
-                      key="update-result"
-                      className="font-mono"
-                      style={{
-                        marginTop: 6,
-                        color: updateStatus.error ? "#C0392B" : "#F5F0E8",
-                        opacity: updateStatus.error ? 0.7 : 0.4,
-                        fontSize: 10,
-                        letterSpacing: "0.1em",
-                      }}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: updateStatus.error ? 0.7 : 0.4 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      {updateLabel()}
-                    </motion.p>
-                  )}
-                </AnimatePresence>
+                <p
+                  className="font-mono"
+                  style={{
+                    marginTop: 6,
+                    color: updateStatus?.error ? "#C0392B" : "#F5F0E8",
+                    opacity: updateStatus ? (updateStatus.error ? 0.7 : 0.4) : 0,
+                    fontSize: 10,
+                    letterSpacing: "0.1em",
+                    transition: "opacity 0.2s ease",
+                    minHeight: "1em",
+                  }}
+                >
+                  {updateLabel()}
+                </p>
               </div>
 
               <button
@@ -524,9 +507,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                 done
               </button>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </div>
 
       {pinSetupOpen && (
         <PinPad
@@ -566,27 +547,22 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
         />
       )}
 
-      <AnimatePresence>
-        {authToast && (
-          <motion.div
-            className="fixed left-0 right-0 flex justify-center font-mono"
-            style={{
-              bottom: 60,
-              zIndex: 70,
-              color: accentHex,
-              fontSize: 10,
-              letterSpacing: "0.3em",
-              pointerEvents: "none",
-            }}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
-            transition={{ duration: 0.25 }}
-          >
-            {authToast}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div
+        className="fixed left-0 right-0 flex justify-center font-mono"
+        style={{
+          bottom: 60,
+          zIndex: 70,
+          color: accentHex,
+          fontSize: 10,
+          letterSpacing: "0.3em",
+          pointerEvents: "none",
+          opacity: authToast ? 1 : 0,
+          transform: authToast ? "translateY(0)" : "translateY(8px)",
+          transition: "opacity 0.25s ease, transform 0.25s ease",
+        }}
+      >
+        {authToast}
+      </div>
     </>
   );
 }
