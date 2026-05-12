@@ -75,7 +75,7 @@ export function Info({
               <span style={{ color: accentHex }}>Encrypt History</span> — your solves are stored only on this device. Turning this on adds automatic encryption so nobody else can read your history even if they access your device. No password needed, it handles itself.
             </p>
             <p style={{ marginBottom: 8, opacity: 0.85 }}>
-              <span style={{ color: accentHex }}>Lock History</span> — requires your fingerprint or PIN before anyone can view your solve history.
+              <span style={{ color: accentHex }}>Lock History</span> — requires biometrics before anyone can view your solve history.
             </p>
 
             <button

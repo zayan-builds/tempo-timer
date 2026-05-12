@@ -230,6 +230,9 @@ export function TimerScreen() {
       const startX = pressStartXRef.current;
       if (startY === null || startX === null || swipeTriggeredRef.current) return;
       if (stateRef.current === "running" || stateRef.current === "armed") return;
+      // If the hold timer is mid-flight, the user is arming the timer — don't
+      // also fire the swipe-up gesture.
+      if (holdTimeoutRef.current !== null) return;
       const screenH = typeof window !== "undefined" ? window.innerHeight : 0;
       if (startY < screenH * 0.7) return;
       const dy = startY - e.clientY;
@@ -337,7 +340,7 @@ export function TimerScreen() {
   return (
     <>
       <main
-        className="tempo-mount-in relative w-full bg-black overflow-hidden touch-none select-none"
+        className="relative w-full bg-black overflow-hidden touch-none select-none"
         style={{
           WebkitUserSelect: "none",
           height: "100dvh",
@@ -345,9 +348,12 @@ export function TimerScreen() {
           transform: `translate3d(0, ${historyOpen ? "-30%" : "0"}, 0)`,
           transition: "transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
           willChange: "transform",
+          overscrollBehavior: "none",
         }}
       >
-        <Bloom state={state} accentHex={accentHex} />
+        <div className="tempo-stage-bloom" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+          <Bloom state={state} accentHex={accentHex} />
+        </div>
 
         <AnimatePresence>
           {pbFlash && (
@@ -366,12 +372,13 @@ export function TimerScreen() {
         <button
           aria-label="info"
           onClick={() => setInfoOpen(true)}
-          className="absolute font-mono"
+          className="absolute font-mono tempo-stage-chrome"
           style={{
             top: 18, left: 20, zIndex: 30,
-            color: "#F5F0E8", opacity: 0.55, fontSize: 14,
+            color: "#F5F0E8", fontSize: 14,
             background: "transparent", border: "none", cursor: "pointer",
             width: 32, height: 32, padding: 0,
+            touchAction: "manipulation",
           }}
         >
           ?
@@ -380,12 +387,13 @@ export function TimerScreen() {
         <button
           aria-label="settings"
           onClick={() => setSettingsOpen(true)}
-          className="absolute"
+          className="absolute tempo-stage-chrome"
           style={{
             top: 18, right: 20, zIndex: 30,
-            opacity: 0.55, background: "transparent", border: "none", cursor: "pointer",
+            background: "transparent", border: "none", cursor: "pointer",
             width: 32, height: 32, padding: 0,
             display: "flex", alignItems: "center", justifyContent: "center",
+            touchAction: "manipulation",
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F5F0E8" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
@@ -415,7 +423,7 @@ export function TimerScreen() {
 
         {/* Timer + new-best slot (fixed, no layout shift) */}
         <div
-          className="absolute left-0 right-0"
+          className="absolute left-0 right-0 tempo-stage-timer"
           style={{
             top: "45%",
             transform: "translateY(-50%)",
@@ -617,7 +625,7 @@ export function TimerScreen() {
         <PinPad
           mode="verify"
           accentHex={accentHex}
-          title="enter pin to view history"
+          title="enter biometric code"
           onCancel={() => setPinVerifyOpen(false)}
           onSubmit={async (pin) => {
             const ok = await verifyPin(pin);

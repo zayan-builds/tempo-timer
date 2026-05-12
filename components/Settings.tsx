@@ -29,23 +29,28 @@ function Row({
   children,
   withDivider = true,
   trailingLabel,
+  labelFontSize = 13,
 }: {
   label: string;
   children: React.ReactNode;
   withDivider?: boolean;
   trailingLabel?: React.ReactNode;
+  labelFontSize?: number;
 }) {
   return (
     <div
-      className="flex items-center justify-between"
       style={{
-        paddingTop: 20,
-        paddingBottom: 20,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        paddingTop: 18,
+        paddingBottom: 18,
         borderBottom: withDivider ? HAIRLINE : "none",
+        gap: 16,
       }}
     >
-      <div className="flex items-center" style={{ gap: 8 }}>
-        <span className="font-mono" style={{ fontSize: 13, letterSpacing: "0.16em", color: "#F5F0E8", opacity: 0.85 }}>
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+        <span className="font-mono" style={{ fontSize: labelFontSize, letterSpacing: "0.16em", color: "#F5F0E8", opacity: 0.85, whiteSpace: "nowrap" }}>
           {label}
         </span>
         {trailingLabel}
@@ -177,17 +182,21 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                         onClick={() => setProExplainerOpen((v) => !v)}
                         className="font-mono"
                         style={{
-                          width: 18,
-                          height: 18,
+                          width: 16,
+                          height: 16,
                           borderRadius: "50%",
                           background: "transparent",
-                          border: "1px solid rgba(245,240,232,0.25)",
-                          color: "#F5F0E8",
-                          opacity: 0.55,
+                          border: `1px solid ${accentHex}80`,
+                          color: accentHex,
+                          opacity: 0.85,
                           fontSize: 10,
-                          lineHeight: "16px",
+                          lineHeight: "14px",
                           padding: 0,
                           cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          touchAction: "manipulation",
                         }}
                       >
                         ?
@@ -250,8 +259,8 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                   <Toggle on={settings.haptics} onChange={(v) => update("haptics", v)} accentHex={accentHex} />
                 </Row>
 
-                <Row label="HOLD DURATION">
-                  <div className="flex gap-4">
+                <Row label="HOLD" labelFontSize={11}>
+                  <div style={{ display: "flex", gap: 14, flexShrink: 0 }}>
                     {HOLD_OPTIONS.map((opt) => (
                       <button
                         key={opt.value}
@@ -274,7 +283,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                   </div>
                 </Row>
 
-                <div style={{ paddingTop: 20, paddingBottom: 20, borderBottom: HAIRLINE }}>
+                <div style={{ paddingTop: 18, paddingBottom: 18, borderBottom: HAIRLINE }}>
                   <span
                     className="font-mono"
                     style={{ fontSize: 13, letterSpacing: "0.16em", color: "#F5F0E8", opacity: 0.85 }}
@@ -283,11 +292,12 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                   </span>
                   <div
                     style={{
-                      marginTop: 16,
+                      marginTop: 14,
                       display: "flex",
                       flexWrap: "wrap",
-                      gap: 14,
+                      gap: 12,
                       alignItems: "center",
+                      paddingRight: 4,
                     }}
                   >
                     {ACCENT_ORDER.map((name) => (
@@ -306,6 +316,8 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                           border: settings.accent === name ? "1px solid rgba(245,240,232,0.4)" : "none",
                           cursor: "pointer",
                           padding: 0,
+                          flexShrink: 0,
+                          touchAction: "manipulation",
                         }}
                       />
                     ))}
@@ -345,7 +357,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                         letterSpacing: "0.2em",
                       }}
                     >
-                      secured with {settings.lockMethod === "biometric" ? "fingerprint" : "PIN"}
+                      secured with biometrics
                     </p>
                   )}
                 </div>
@@ -362,7 +374,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                   marginTop: 14,
                 }}
               >
-                Your history stays on this device. Encryption protects it at rest; lock requires your fingerprint or PIN to view.
+                Your history stays on this device. Encryption protects it at rest; lock requires biometrics to view.
               </p>
 
               <div style={{ marginTop: 48, borderTop: HAIRLINE, paddingTop: 28 }}>
@@ -439,7 +451,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
         <PinPad
           mode="set"
           accentHex={accentHex}
-          title="set a 4-digit pin"
+          title="set biometric code"
           onCancel={() => setPinSetupOpen(false)}
           onSubmit={async (pin) => {
             await setPin(pin);
@@ -455,7 +467,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
         <PinPad
           mode="verify"
           accentHex={accentHex}
-          title="enter pin to disable lock"
+          title="enter biometric code"
           onCancel={() => {
             setPinDisableOpen(false);
             showAuthToast();
