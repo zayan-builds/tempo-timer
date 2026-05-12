@@ -3,6 +3,7 @@ const RELEASES_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
 const ASSET_NAME = "dist.zip";
 const FALLBACK_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "0.1.0";
 const PREF_VERSION_KEY = "tempo.installedVersion";
+const PREF_RESET_KEY = "tempo.updaterReset.v1";
 
 type GitHubAsset = { name: string; browser_download_url: string };
 type GitHubRelease = { tag_name?: string; assets?: GitHubAsset[] };
@@ -99,6 +100,19 @@ async function fetchWithTimeout(url: string, timeoutMs = 10000): Promise<Respons
 export async function checkForUpdate(): Promise<void> {
   console.log("[updater] checkForUpdate start — FALLBACK_VERSION=" + FALLBACK_VERSION);
   setStatus({ download: "idle", error: undefined, done: false });
+
+  // One-time reset: clear any poisoned stored version from before OTA was working.
+  try {
+    const { Preferences } = await import("@capacitor/preferences");
+    const { value: alreadyReset } = await Preferences.get({ key: PREF_RESET_KEY });
+    if (!alreadyReset) {
+      console.log("[updater] first-run reset: clearing stored version");
+      await Preferences.remove({ key: PREF_VERSION_KEY });
+      await Preferences.set({ key: PREF_RESET_KEY, value: "1" });
+    }
+  } catch (e) {
+    console.log("[updater] reset check failed", e);
+  }
 
   let CapacitorUpdater: typeof import("@capgo/capacitor-updater").CapacitorUpdater | null = null;
   try {
