@@ -1,5 +1,4 @@
 "use client";
-import { motion, AnimatePresence } from "framer-motion";
 
 const SECTION_LABEL_STYLE: React.CSSProperties = {
   fontSize: 11,
@@ -18,21 +17,18 @@ export function Info({
   accentHex: string;
 }) {
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          className="fixed inset-0 z-50 overflow-y-auto"
-          style={{
-            background: "rgba(0, 0, 0, 0.97)",
-            backdropFilter: "blur(8px)",
-            WebkitBackdropFilter: "blur(8px)",
-          }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.25 }}
-          onClick={onClose}
-        >
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto"
+      style={{
+        background: "rgba(0, 0, 0, 0.97)",
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
+        opacity: open ? 1 : 0,
+        pointerEvents: open ? "auto" : "none",
+        transition: "opacity 0.25s ease",
+      }}
+      onClick={onClose}
+    >
           <div
             className="max-w-sm mx-auto px-8 font-mono"
             style={{
@@ -95,8 +91,6 @@ export function Info({
               close
             </button>
           </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    </div>
   );
 }

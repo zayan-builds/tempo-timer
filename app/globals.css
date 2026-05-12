@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+*, *::before, *::after {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
 html, body {
   background: #000000;
   color: #F5F0E8;
@@ -46,6 +51,15 @@ button, [role="button"] {
 }
 .tempo-row-in {
   animation: tempo-row-in 400ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes timer-stop-overshoot {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.016); }
+  100% { transform: scale(1); }
+}
+.timer-stop-overshoot {
+  animation: timer-stop-overshoot 280ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
 @keyframes tempo-stage-bloom {

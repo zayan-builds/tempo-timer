@@ -1,5 +1,6 @@
-export const TIME_PATTERN = /^\d+:\d{2}\.\d{2}$/;
+export const TIME_PATTERN = /^[0-9]+:[0-9]{2}\.[0-9]{2}$/;
 
+// Only use ASCII digits 0-9 — never rely on font rendering to distinguish letters
 export function formatTime(ms: number): string {
   if (typeof ms !== "number" || !isFinite(ms) || ms < 0) ms = 0;
   const totalCs = Math.floor(ms / 10);
@@ -7,7 +8,11 @@ export function formatTime(ms: number): string {
   const totalSec = Math.floor(totalCs / 100);
   const sec = totalSec % 60;
   const min = Math.floor(totalSec / 60);
-  return `${min}:${sec.toString().padStart(2, "0")}.${cs.toString().padStart(2, "0")}`;
+  // Explicitly coerce each part through Number() to guarantee digit characters
+  const mm = String(min | 0);
+  const ss = String(sec | 0).padStart(2, "0");
+  const cc = String(cs | 0).padStart(2, "0");
+  return `${mm}:${ss}.${cc}`;
 }
 
 export function isValidFormatted(s: string): boolean {
