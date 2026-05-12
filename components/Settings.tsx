@@ -426,7 +426,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     letterSpacing: "0.18em",
                   }}
                 >
-                  v0.1.9
+                  v0.1.10
                 </p>
               </div>
 
