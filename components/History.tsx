@@ -18,7 +18,6 @@ type Group = { label: string; items: Solve[] };
 
 const DELETE_RED = "#C0392B";
 const SIDE_PAD = 24;
-const SWIPE_THRESHOLD = 60;
 
 function startOfDay(ts: number): number {
   const d = new Date(ts);
@@ -67,63 +66,125 @@ type RowProps = {
   accentHex: string;
 };
 
-function Row({ solve, isPB, pendingDelete, onSwipeDelete, onShare, accentHex }: RowProps) {
-  const innerRef = useRef<HTMLDivElement>(null);
-  const startXRef = useRef(0);
-  const currentXRef = useRef(0);
-  const draggingRef = useRef(false);
+const SWIPE_COMMIT = 80;
 
-  function applyTranslate(x: number, withTransition: boolean) {
-    const el = innerRef.current;
-    if (!el) return;
-    el.style.transition = withTransition ? "transform 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease" : "none";
-    el.style.transform = `translateX(${x}px)`;
-    el.style.opacity = x < -20 ? String(Math.max(0, 1 + x / 200)) : "1";
+function Row({ solve, isPB, pendingDelete, onSwipeDelete, onShare, accentHex }: RowProps) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+  const stripRef = useRef<HTMLDivElement>(null);
+  const startXRef = useRef(0);
+  const startYRef = useRef(0);
+  const deltaXRef = useRef(0);
+  const swipingRef = useRef(false);
+  const lockedAxisRef = useRef<"x" | "y" | null>(null);
+
+  function setStrip(delta: number) {
+    const strip = stripRef.current;
+    if (!strip) return;
+    const clamped = Math.min(delta, SWIPE_COMMIT);
+    strip.style.width = `${clamped}px`;
+    strip.style.opacity = String(clamped / SWIPE_COMMIT);
   }
 
   function onPointerDown(e: React.PointerEvent) {
     if (pendingDelete) return;
     if ((e.target as HTMLElement).closest("button")) return;
     startXRef.current = e.clientX;
-    currentXRef.current = 0;
-    draggingRef.current = false;
+    startYRef.current = e.clientY;
+    deltaXRef.current = 0;
+    swipingRef.current = false;
+    lockedAxisRef.current = null;
     innerRef.current?.setPointerCapture(e.pointerId);
+    // Disable children pointer events during swipe detection
+    if (innerRef.current) innerRef.current.style.pointerEvents = "none";
   }
 
   function onPointerMove(e: React.PointerEvent) {
     if (!innerRef.current?.hasPointerCapture(e.pointerId)) return;
-    const dx = e.clientX - startXRef.current;
-    if (!draggingRef.current) {
-      if (Math.abs(dx) < 6) return;
-      draggingRef.current = true;
+    const dx = startXRef.current - e.clientX; // positive = left swipe
+    const dy = Math.abs(e.clientY - startYRef.current);
+
+    if (lockedAxisRef.current === null) {
+      if (Math.abs(dx) < 4 && dy < 4) return;
+      lockedAxisRef.current = dy > Math.abs(dx) ? "y" : "x";
     }
-    const clamped = Math.min(0, dx);
-    currentXRef.current = clamped;
-    applyTranslate(clamped, false);
+    if (lockedAxisRef.current === "y") {
+      if (innerRef.current) innerRef.current.style.pointerEvents = "";
+      return;
+    }
+
+    swipingRef.current = true;
+    const clamped = Math.max(0, dx);
+    deltaXRef.current = clamped;
+
+    const el = innerRef.current;
+    if (!el) return;
+    el.style.transition = "none";
+    el.style.transform = `translateX(-${Math.min(clamped, SWIPE_COMMIT)}px)`;
+    setStrip(clamped);
   }
 
-  function onPointerUp(e: React.PointerEvent) {
-    if (!draggingRef.current) return;
-    if (currentXRef.current < -SWIPE_THRESHOLD) {
-      applyTranslate(-420, true);
-      onSwipeDelete(solve.id);
+  function onPointerUp() {
+    if (innerRef.current) innerRef.current.style.pointerEvents = "";
+    if (!swipingRef.current) return;
+    swipingRef.current = false;
+
+    const delta = deltaXRef.current;
+    const el = innerRef.current;
+    if (!el) return;
+
+    if (delta >= SWIPE_COMMIT) {
+      // Commit: fly off left, then collapse height
+      el.style.transition = "transform 250ms ease-in";
+      el.style.transform = `translateX(-100vw)`;
+      setStrip(SWIPE_COMMIT);
+      setTimeout(() => {
+        const wrap = wrapRef.current;
+        if (wrap) {
+          wrap.style.transition = "max-height 200ms ease, opacity 200ms ease";
+          wrap.style.maxHeight = "0px";
+          wrap.style.opacity = "0";
+        }
+        setTimeout(() => onSwipeDelete(solve.id), 200);
+      }, 250);
     } else {
-      applyTranslate(0, true);
+      // Spring back
+      el.style.transition = "transform 200ms cubic-bezier(0.32, 0.72, 0, 1)";
+      el.style.transform = "translateX(0)";
+      const strip = stripRef.current;
+      if (strip) {
+        strip.style.transition = "width 200ms cubic-bezier(0.32,0.72,0,1), opacity 200ms ease";
+        strip.style.width = "0px";
+        strip.style.opacity = "0";
+      }
     }
-    draggingRef.current = false;
   }
 
   return (
     <div
+      ref={wrapRef}
       style={{
         overflow: "hidden",
         maxHeight: pendingDelete ? "0px" : "80px",
         opacity: pendingDelete ? 0 : 1,
-        transition: pendingDelete
-          ? "max-height 240ms cubic-bezier(0.4,0,0.2,1) 120ms, opacity 120ms ease"
-          : "none",
+        transition: pendingDelete ? "max-height 240ms ease 120ms, opacity 120ms ease" : "none",
+        position: "relative",
       }}
     >
+      {/* Red delete strip on right edge */}
+      <div
+        ref={stripRef}
+        style={{
+          position: "absolute",
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: 0,
+          opacity: 0,
+          background: "#C0392B",
+          pointerEvents: "none",
+        }}
+      />
       <div
         ref={innerRef}
         className="flex items-center justify-between"
@@ -136,6 +197,8 @@ function Row({ solve, isPB, pendingDelete, onSwipeDelete, onShare, accentHex }: 
           touchAction: "pan-y",
           cursor: "default",
           willChange: "transform",
+          position: "relative",
+          zIndex: 1,
         }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -158,30 +221,19 @@ function Row({ solve, isPB, pendingDelete, onSwipeDelete, onShare, accentHex }: 
         </span>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {isPB && (
-            <span
-              className="font-mono"
-              style={{ color: accentHex, fontSize: 9, letterSpacing: "0.3em" }}
-            >
+            <span className="font-mono" style={{ color: accentHex, fontSize: 9, letterSpacing: "0.3em" }}>
               pb
             </span>
           )}
-          <span
-            className="font-mono"
-            style={{ color: "#F5F0E8", opacity: 0.4, fontSize: 10, letterSpacing: "0.12em" }}
-          >
+          <span className="font-mono" style={{ color: "#F5F0E8", opacity: 0.4, fontSize: 10, letterSpacing: "0.12em" }}>
             {formatClock(solve.timestamp)}
           </span>
           <button
             aria-label="share"
             onClick={(e) => { e.stopPropagation(); onShare(solve); }}
             style={{
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              opacity: 0.4,
-              padding: 4,
-              display: "flex",
-              alignItems: "center",
+              background: "transparent", border: "none", cursor: "pointer",
+              opacity: 0.4, padding: 4, display: "flex", alignItems: "center",
               touchAction: "manipulation",
             }}
           >
