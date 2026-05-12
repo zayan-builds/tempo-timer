@@ -13,8 +13,7 @@ import { sounds, unlockAudio } from "@/lib/sound";
 import { PinPad } from "./PinPad";
 
 const ACCENT_ORDER: AccentName[] = [
-  "amber", "blue", "green", "red", "white",
-  "purple", "rose", "gold", "teal", "orange",
+  "amber", "blue", "green", "red", "purple", "white",
 ];
 const HOLD_OPTIONS: Array<{ value: 300 | 500 | 750; label: string }> = [
   { value: 300, label: "0.3s" },
@@ -96,6 +95,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
   const [pinDisableOpen, setPinDisableOpen] = useState(false);
   const [authToast, setAuthToast] = useState<string | null>(null);
   const [proExplainerOpen, setProExplainerOpen] = useState(false);
+  const proExplainerTouched = useRef(false);
   const [updateStatus, setUpdateStatus] = useState<UpdaterStatus | null>(null);
   const [updateRunning, setUpdateRunning] = useState(false);
   const updateHideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -215,7 +215,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     trailingLabel={
                       <button
                         aria-label="what is pro mode"
-                        onClick={() => setProExplainerOpen((v) => !v)}
+                        onClick={() => { proExplainerTouched.current = true; setProExplainerOpen((v) => !v); }}
                         className="font-mono"
                         style={{
                           width: 16,
@@ -246,7 +246,9 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                       overflow: "hidden",
                       maxHeight: proExplainerOpen ? 200 : 0,
                       opacity: proExplainerOpen ? 1 : 0,
-                      transition: "max-height 0.28s cubic-bezier(0.4,0,0.2,1), opacity 0.28s cubic-bezier(0.4,0,0.2,1)",
+                      transition: proExplainerTouched.current
+                        ? "max-height 0.28s cubic-bezier(0.4,0,0.2,1), opacity 0.28s cubic-bezier(0.4,0,0.2,1)"
+                        : "none",
                     }}
                   >
                     <p
@@ -451,7 +453,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     letterSpacing: "0.18em",
                   }}
                 >
-                  v0.1.5
+                  v0.1.6
                 </p>
               </div>
 
