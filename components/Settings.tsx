@@ -9,9 +9,13 @@ import {
   setPin,
   verifyBiometric,
 } from "@/lib/auth";
+import { sounds, unlockAudio } from "@/lib/sound";
 import { PinPad } from "./PinPad";
 
-const ACCENT_ORDER: AccentName[] = ["amber", "blue", "green", "red", "white"];
+const ACCENT_ORDER: AccentName[] = [
+  "amber", "blue", "green", "red", "white",
+  "purple", "rose", "gold", "teal", "orange",
+];
 const HOLD_OPTIONS: Array<{ value: 300 | 500 | 750; label: string }> = [
   { value: 300, label: "0.3s" },
   { value: 500, label: "0.5s" },
@@ -20,7 +24,17 @@ const HOLD_OPTIONS: Array<{ value: 300 | 500 | 750; label: string }> = [
 
 const HAIRLINE = "1px solid rgba(245,240,232,0.08)";
 
-function Row({ label, children, withDivider = true }: { label: string; children: React.ReactNode; withDivider?: boolean }) {
+function Row({
+  label,
+  children,
+  withDivider = true,
+  trailingLabel,
+}: {
+  label: string;
+  children: React.ReactNode;
+  withDivider?: boolean;
+  trailingLabel?: React.ReactNode;
+}) {
   return (
     <div
       className="flex items-center justify-between"
@@ -30,9 +44,12 @@ function Row({ label, children, withDivider = true }: { label: string; children:
         borderBottom: withDivider ? HAIRLINE : "none",
       }}
     >
-      <span className="font-mono" style={{ fontSize: 13, letterSpacing: "0.16em", color: "#F5F0E8", opacity: 0.85 }}>
-        {label}
-      </span>
+      <div className="flex items-center" style={{ gap: 8 }}>
+        <span className="font-mono" style={{ fontSize: 13, letterSpacing: "0.16em", color: "#F5F0E8", opacity: 0.85 }}>
+          {label}
+        </span>
+        {trailingLabel}
+      </div>
       {children}
     </div>
   );
@@ -59,11 +76,21 @@ function Toggle({ on, onChange, accentHex }: { on: boolean; onChange: (v: boolea
   );
 }
 
+function SpeakerIcon({ size = 12, opacity = 0.4 }: { size?: number; opacity?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#F5F0E8" strokeOpacity={opacity} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="#F5F0E8" fillOpacity={opacity * 0.6} />
+      <path d="M15.5 8.5a4 4 0 0 1 0 7" />
+    </svg>
+  );
+}
+
 export function Settings({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { settings, update, accentHex } = useSettings();
   const [pinSetupOpen, setPinSetupOpen] = useState(false);
   const [pinDisableOpen, setPinDisableOpen] = useState(false);
   const [authToast, setAuthToast] = useState<string | null>(null);
+  const [proExplainerOpen, setProExplainerOpen] = useState(false);
 
   function showAuthToast() {
     setAuthToast("authenticate to disable lock");
@@ -103,6 +130,12 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
     doDisableLock();
   }
 
+  function previewStopSound(e: React.MouseEvent) {
+    e.stopPropagation();
+    unlockAudio();
+    sounds.stop();
+  }
+
   return (
     <>
       <AnimatePresence>
@@ -113,16 +146,17 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
               background: "rgba(0, 0, 0, 0.97)",
               backdropFilter: "blur(8px)",
               WebkitBackdropFilter: "blur(8px)",
+              WebkitOverflowScrolling: "touch",
             }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 24 }}
+            transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
             onClick={onClose}
           >
             <div
-              className="max-w-sm mx-auto px-8"
-              style={{ paddingTop: 80, paddingBottom: 80 }}
+              className="max-w-sm mx-auto"
+              style={{ paddingTop: 80, paddingBottom: 80, paddingLeft: 24, paddingRight: 24 }}
               onClick={(e) => e.stopPropagation()}
             >
               <p
@@ -133,11 +167,86 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
               </p>
 
               <div style={{ borderTop: HAIRLINE }}>
-                <Row label="PRO MODE">
-                  <Toggle on={settings.proMode} onChange={(v) => update("proMode", v)} accentHex={accentHex} />
-                </Row>
+                <div style={{ borderBottom: HAIRLINE }}>
+                  <Row
+                    label="PRO MODE"
+                    withDivider={false}
+                    trailingLabel={
+                      <button
+                        aria-label="what is pro mode"
+                        onClick={() => setProExplainerOpen((v) => !v)}
+                        className="font-mono"
+                        style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: "50%",
+                          background: "transparent",
+                          border: "1px solid rgba(245,240,232,0.25)",
+                          color: "#F5F0E8",
+                          opacity: 0.55,
+                          fontSize: 10,
+                          lineHeight: "16px",
+                          padding: 0,
+                          cursor: "pointer",
+                        }}
+                      >
+                        ?
+                      </button>
+                    }
+                  >
+                    <Toggle on={settings.proMode} onChange={(v) => update("proMode", v)} accentHex={accentHex} />
+                  </Row>
+                  <AnimatePresence initial={false}>
+                    {proExplainerOpen && (
+                      <motion.div
+                        key="pro-explainer"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+                        style={{ overflow: "hidden" }}
+                      >
+                        <p
+                          className="font-mono"
+                          style={{
+                            color: "#F5F0E8",
+                            opacity: 0.55,
+                            fontSize: 11,
+                            lineHeight: 1.7,
+                            letterSpacing: "0.04em",
+                            paddingBottom: 18,
+                          }}
+                        >
+                          Pro Mode shows a scramble at the top before each solve. A scramble is a sequence of moves that randomizes your cube so every solve starts from a fair position.
+                          {"\n\n"}
+                          It also tracks ao5 and ao12: your rolling average across your last 5 and 12 solves. These show your consistent speed, not just your best time.
+                          {"\n\n"}
+                          Recommended once you can solve reliably under 2 minutes.
+                        </p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
 
-                <Row label="HAPTICS">
+                <Row
+                  label="HAPTICS + SOUND"
+                  trailingLabel={
+                    <button
+                      aria-label="preview sound"
+                      onClick={previewStopSound}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        padding: 4,
+                        display: "flex",
+                        alignItems: "center",
+                      }}
+                    >
+                      <SpeakerIcon size={12} opacity={settings.haptics ? 0.55 : 0.25} />
+                    </button>
+                  }
+                >
                   <Toggle on={settings.haptics} onChange={(v) => update("haptics", v)} accentHex={accentHex} />
                 </Row>
 
@@ -165,29 +274,43 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                   </div>
                 </Row>
 
-                <Row label="ACCENT">
-                  <div className="flex gap-4 items-center">
+                <div style={{ paddingTop: 20, paddingBottom: 20, borderBottom: HAIRLINE }}>
+                  <span
+                    className="font-mono"
+                    style={{ fontSize: 13, letterSpacing: "0.16em", color: "#F5F0E8", opacity: 0.85 }}
+                  >
+                    ACCENT
+                  </span>
+                  <div
+                    style={{
+                      marginTop: 16,
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 14,
+                      alignItems: "center",
+                    }}
+                  >
                     {ACCENT_ORDER.map((name) => (
                       <button
                         key={name}
                         onClick={() => update("accent", name)}
                         aria-label={name}
                         style={{
-                          width: 14,
-                          height: 14,
+                          width: 18,
+                          height: 18,
                           borderRadius: "50%",
                           background: ACCENT_HEX[name],
-                          opacity: settings.accent === name ? 1 : 0.35,
-                          transform: settings.accent === name ? "scale(1.2)" : "scale(1)",
-                          transition: "all 200ms ease",
-                          border: "none",
+                          opacity: settings.accent === name ? 1 : 0.4,
+                          transform: settings.accent === name ? "scale(1.18)" : "scale(1)",
+                          transition: "opacity 200ms ease, transform 200ms ease",
+                          border: settings.accent === name ? "1px solid rgba(245,240,232,0.4)" : "none",
                           cursor: "pointer",
                           padding: 0,
                         }}
                       />
                     ))}
                   </div>
-                </Row>
+                </div>
 
                 <Row label="ENCRYPT HISTORY">
                   <Toggle
@@ -218,21 +341,6 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                 }}
               >
                 Your history stays on this device. Encryption protects it at rest; lock requires your fingerprint or PIN to view.
-              </p>
-
-              <p
-                className="font-mono"
-                style={{
-                  color: "#F5F0E8",
-                  opacity: 0.4,
-                  fontSize: 10,
-                  lineHeight: 1.6,
-                  letterSpacing: "0.04em",
-                  marginTop: 12,
-                  fontStyle: "italic",
-                }}
-              >
-                Sound feedback follows the Haptics setting.
               </p>
 
               <div style={{ marginTop: 48, borderTop: HAIRLINE, paddingTop: 28 }}>
@@ -280,7 +388,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     letterSpacing: "0.18em",
                   }}
                 >
-                  v0.1.1
+                  v0.1.2
                 </p>
               </div>
 

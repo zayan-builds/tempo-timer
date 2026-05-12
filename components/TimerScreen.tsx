@@ -46,19 +46,8 @@ export function TimerScreen() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [comparisonFull, setComparisonFull] = useState<string | null>(null);
   const [typedText, setTypedText] = useState("");
-  const [shiftPx, setShiftPx] = useState(28);
   const [chevronFlash, setChevronFlash] = useState(false);
   const [pinFailCount, setPinFailCount] = useState(0);
-
-  useEffect(() => {
-    const update = () => {
-      if (typeof window === "undefined") return;
-      setShiftPx(window.innerWidth < 768 ? 22 : 28);
-    };
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
 
   const startedAtRef = useRef<number>(0);
   const rafRef = useRef<number | null>(null);
@@ -206,7 +195,6 @@ export function TimerScreen() {
     if (settings.lockMethod === "biometric") {
       const ok = await verifyBiometric();
       if (ok) setHistoryOpen(true);
-      // No error on biometric cancel/fail per polish spec
       return;
     }
     if (settings.lockMethod === "pin") {
@@ -221,6 +209,7 @@ export function TimerScreen() {
     (e: React.PointerEvent) => {
       if (overlayOpenRef.current) return;
       e.preventDefault();
+      e.stopPropagation();
       unlockAudio();
       pressStartYRef.current = e.clientY;
       pressStartXRef.current = e.clientX;
@@ -260,6 +249,7 @@ export function TimerScreen() {
     (e: React.PointerEvent) => {
       if (overlayOpenRef.current) return;
       e.preventDefault();
+      e.stopPropagation();
       pressStartYRef.current = null;
       pressStartXRef.current = null;
       cancelHold();
@@ -342,245 +332,278 @@ export function TimerScreen() {
   const scrambleOpacity = state === "running" ? 0.18 : 0.6;
   const pbFlash = state === "pb";
   const chevronVisible = state !== "running" && state !== "armed";
+  const comparisonShown = !!comparisonFull && state !== "running" && state !== "armed";
 
   return (
-    <main
-      className="relative w-full bg-black overflow-hidden touch-none select-none"
-      style={{ WebkitUserSelect: "none", height: "100dvh", minHeight: "100dvh" }}
-    >
-      <Bloom state={state} accentHex={accentHex} />
-
-      <AnimatePresence>
-        {pbFlash && (
-          <motion.div
-            key="pb-flash"
-            aria-hidden
-            className="fixed inset-0 pointer-events-none"
-            style={{ background: accentHex, zIndex: 2 }}
-            initial={{ opacity: 0.2 }}
-            animate={{ opacity: 0 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
-          />
-        )}
-      </AnimatePresence>
-
-      <button
-        aria-label="info"
-        onClick={() => setInfoOpen(true)}
-        className="absolute font-mono"
+    <>
+      <main
+        className="tempo-mount-in relative w-full bg-black overflow-hidden touch-none select-none"
         style={{
-          top: 18, left: 20, zIndex: 30,
-          color: "#F5F0E8", opacity: 0.55, fontSize: 14,
-          background: "transparent", border: "none", cursor: "pointer",
-          width: 32, height: 32, padding: 0,
+          WebkitUserSelect: "none",
+          height: "100dvh",
+          minHeight: "100dvh",
+          transform: `translate3d(0, ${historyOpen ? "-30%" : "0"}, 0)`,
+          transition: "transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+          willChange: "transform",
         }}
       >
-        ?
-      </button>
+        <Bloom state={state} accentHex={accentHex} />
 
-      <button
-        aria-label="settings"
-        onClick={() => setSettingsOpen(true)}
-        className="absolute"
-        style={{
-          top: 18, right: 20, zIndex: 30,
-          opacity: 0.55, background: "transparent", border: "none", cursor: "pointer",
-          width: 32, height: 32, padding: 0,
-          display: "flex", alignItems: "center", justifyContent: "center",
-        }}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F5F0E8" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="3" />
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-        </svg>
-      </button>
-
-      {scrambleVisible && (
-        <motion.div
-          className="absolute left-0 right-0 flex justify-center px-12"
-          style={{ top: 56, zIndex: 5 }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: scrambleOpacity }}
-          transition={{ duration: 0.4 }}
-        >
-          <span
-            className="font-mono text-center"
-            style={{ color: accentHex, fontSize: 12, letterSpacing: "0.08em" }}
-          >
-            {scramble}
-          </span>
-        </motion.div>
-      )}
-
-      <div
-        className="absolute left-0 right-0 flex flex-col items-center justify-center"
-        style={{
-          top: "45%",
-          transform: "translateY(-50%)",
-          zIndex: 5,
-          paddingLeft: 24,
-          paddingRight: 24,
-        }}
-      >
-        <motion.div
-          animate={{ y: comparisonFull ? -shiftPx : 0 }}
-          transition={{ type: "spring", stiffness: 120, damping: 20 }}
-          style={{ display: "flex", flexDirection: "column", alignItems: "center" }}
-        >
-          <TimerDisplay ms={displayMs} state={state} accentHex={accentHex} />
-          <AnimatePresence>
-            {state === "pb" && (
-              <motion.div
-                key="pb-label"
-                className="font-mono"
-                style={{ color: accentHex, fontSize: 10, letterSpacing: "0.3em", marginTop: 28 }}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.6 }}
-              >
-                new best
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
         <AnimatePresence>
-          {comparisonFull && state !== "running" && state !== "armed" && (
+          {pbFlash && (
             <motion.div
-              key="cmp"
+              key="pb-flash"
+              aria-hidden
+              className="fixed inset-0 pointer-events-none"
+              style={{ background: accentHex, zIndex: 2 }}
+              initial={{ opacity: 0.2 }}
+              animate={{ opacity: 0 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+            />
+          )}
+        </AnimatePresence>
+
+        <button
+          aria-label="info"
+          onClick={() => setInfoOpen(true)}
+          className="absolute font-mono"
+          style={{
+            top: 18, left: 20, zIndex: 30,
+            color: "#F5F0E8", opacity: 0.55, fontSize: 14,
+            background: "transparent", border: "none", cursor: "pointer",
+            width: 32, height: 32, padding: 0,
+          }}
+        >
+          ?
+        </button>
+
+        <button
+          aria-label="settings"
+          onClick={() => setSettingsOpen(true)}
+          className="absolute"
+          style={{
+            top: 18, right: 20, zIndex: 30,
+            opacity: 0.55, background: "transparent", border: "none", cursor: "pointer",
+            width: 32, height: 32, padding: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F5F0E8" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+
+        {scrambleVisible && (
+          <div
+            className="absolute left-0 right-0 flex justify-center px-12"
+            style={{
+              top: 56,
+              zIndex: 5,
+              opacity: scrambleOpacity,
+              transition: "opacity 0.4s ease",
+            }}
+          >
+            <span
+              className="font-mono text-center"
+              style={{ color: accentHex, fontSize: 12, letterSpacing: "0.08em" }}
+            >
+              {scramble}
+            </span>
+          </div>
+        )}
+
+        {/* Timer + new-best slot (fixed, no layout shift) */}
+        <div
+          className="absolute left-0 right-0"
+          style={{
+            top: "45%",
+            transform: "translateY(-50%)",
+            zIndex: 5,
+            paddingLeft: 24,
+            paddingRight: 24,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            pointerEvents: "none",
+          }}
+        >
+          <div style={{ position: "relative", display: "flex", justifyContent: "center", alignItems: "center" }}>
+            <TimerDisplay ms={displayMs} state={state} accentHex={accentHex} />
+            {/* new-best label: absolute, never affects layout */}
+            <div
+              aria-hidden={state !== "pb"}
+              style={{
+                position: "absolute",
+                left: "50%",
+                top: "100%",
+                transform: "translateX(-50%)",
+                marginTop: 18,
+                color: accentHex,
+                fontSize: 10,
+                letterSpacing: "0.3em",
+                opacity: state === "pb" ? 1 : 0,
+                transition: "opacity 600ms cubic-bezier(0.4,0,0.2,1)",
+                whiteSpace: "nowrap",
+                pointerEvents: "none",
+              }}
+              className="font-mono"
+            >
+              new best
+            </div>
+          </div>
+
+          {/* Comparison slot: pre-reserved min-height, absolute overlay so no jump */}
+          <div
+            style={{
+              position: "relative",
+              width: "100%",
+              marginTop: state === "pb" ? 44 : 32,
+              minHeight: 36,
+              transition: "margin-top 0.3s ease",
+            }}
+          >
+            <div
               className="font-mono italic text-center"
               style={{
-                color: accentHex,
-                fontSize: 12,
-                letterSpacing: "0.05em",
-                marginTop: state === "pb" ? 18 : 28,
-                paddingLeft: 16,
-                paddingRight: 16,
                 position: "absolute",
                 left: 0,
                 right: 0,
-                top: "100%",
+                top: 0,
+                color: accentHex,
+                fontSize: 12,
+                letterSpacing: "0.05em",
+                paddingLeft: 16,
+                paddingRight: 16,
+                opacity: comparisonShown ? 1 : 0,
+                transition: comparisonShown
+                  ? "opacity 0.25s ease-out"
+                  : "opacity 0.6s ease-in",
+                pointerEvents: "none",
               }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1, transition: { duration: 0.25, ease: "easeOut" } }}
-              exit={{ opacity: 0, transition: { duration: 0.6, ease: "easeIn" } }}
             >
               {typedText}
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom strip */}
+        <div
+          className="absolute left-0 right-0 px-8 flex justify-center items-center font-mono"
+          style={{
+            bottom: "5%",
+            color: "#F5F0E8",
+            fontSize: 11,
+            letterSpacing: "0.08em",
+            zIndex: 5,
+            minHeight: 16,
+          }}
+        >
+          <AnimatePresence mode="wait">
+            {statsVisible && lastSolveMs !== null && (
+              <motion.div
+                key="bottom-row"
+                layout={false}
+                className="w-full flex justify-between items-center"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 0.55 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <span style={{ minWidth: 80 }}>{ao5 !== null ? `ao5  ${formatTime(ao5)}` : ""}</span>
+                <span>{formatTime(lastSolveMs)}</span>
+                <span style={{ minWidth: 80, textAlign: "right" }}>{ao12 !== null ? `ao12 ${formatTime(ao12)}` : ""}</span>
+              </motion.div>
+            )}
+            {!statsVisible && lastSolveMs !== null && state !== "running" && (
+              <motion.div
+                key="bottom-last"
+                layout={false}
+                className="flex flex-col items-center"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <span style={{ color: "#F5F0E8", opacity: 0.3, fontSize: 10, letterSpacing: "0.3em", marginBottom: 6 }}>
+                  last solve
+                </span>
+                <span style={{ color: "#F5F0E8", opacity: 0.7, fontSize: 13, letterSpacing: "0.08em" }}>
+                  {formatTime(lastSolveMs)}
+                </span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Chevron — opens history */}
+        <AnimatePresence>
+          {chevronVisible && (
+            <motion.button
+              key="history-chevron"
+              layout={false}
+              aria-label="history"
+              onClick={() => void openHistoryGated()}
+              className={`absolute${chevronFlash ? "" : " tempo-chevron-pulse"}`}
+              style={{
+                left: "50%",
+                bottom: 14,
+                transform: "translateX(-50%)",
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                padding: 8,
+                zIndex: 25,
+              }}
+              initial={{ opacity: 0 }}
+              animate={chevronFlash ? { opacity: 1 } : { opacity: undefined }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: chevronFlash ? 0.18 : 0.4 }}
+            >
+              <svg width="22" height="14" viewBox="0 0 22 14" fill="none" stroke={chevronFlash ? accentHex : "#F5F0E8"} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 10 11 4 19 10" />
+              </svg>
+            </motion.button>
+          )}
+        </AnimatePresence>
+
+        {/* Auth error toast */}
+        <AnimatePresence>
+          {authError && (
+            <motion.div
+              key="auth-error"
+              layout={false}
+              className="absolute left-0 right-0 flex justify-center font-mono"
+              style={{ bottom: 80, zIndex: 30, color: accentHex, fontSize: 10, letterSpacing: "0.3em" }}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.25 }}
+            >
+              {authError}
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
 
-      {/* Bottom strip */}
-      <div
-        className="absolute left-0 right-0 px-8 flex justify-center items-center font-mono"
-        style={{
-          bottom: "5%",
-          color: "#F5F0E8",
-          fontSize: 11,
-          letterSpacing: "0.08em",
-          zIndex: 5,
-          minHeight: 16,
-        }}
-      >
-        <AnimatePresence mode="wait">
-          {statsVisible && lastSolveMs !== null && (
-            <motion.div
-              key="bottom-row"
-              className="w-full flex justify-between items-center"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.55 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <span style={{ minWidth: 80 }}>{ao5 !== null ? `ao5  ${formatTime(ao5)}` : ""}</span>
-              <span>{formatTime(lastSolveMs)}</span>
-              <span style={{ minWidth: 80, textAlign: "right" }}>{ao12 !== null ? `ao12 ${formatTime(ao12)}` : ""}</span>
-            </motion.div>
-          )}
-          {!statsVisible && lastSolveMs !== null && state !== "running" && (
-            <motion.div
-              key="bottom-last"
-              className="flex flex-col items-center"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <span style={{ color: "#F5F0E8", opacity: 0.3, fontSize: 10, letterSpacing: "0.3em", marginBottom: 6 }}>
-                last solve
-              </span>
-              <span style={{ color: "#F5F0E8", opacity: 0.7, fontSize: 13, letterSpacing: "0.08em" }}>
-                {formatTime(lastSolveMs)}
-              </span>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+        {/* Touch zone */}
+        <div
+          className="absolute left-0 right-0 bottom-0"
+          style={{ height: "65%", zIndex: 10 }}
+          onPointerDown={onPress}
+          onPointerMove={onPointerMove}
+          onPointerUp={onRelease}
+          onPointerCancel={onRelease}
+          onPointerLeave={(e) => {
+            if (stateRef.current === "armed" || holdTimeoutRef.current) onRelease(e);
+          }}
+          onContextMenu={(e) => e.preventDefault()}
+        />
 
-      {/* Chevron — opens history */}
-      <AnimatePresence>
-        {chevronVisible && (
-          <motion.button
-            key="history-chevron"
-            aria-label="history"
-            onClick={() => void openHistoryGated()}
-            className={`absolute${chevronFlash ? "" : " tempo-chevron-pulse"}`}
-            style={{
-              left: "50%",
-              bottom: 14,
-              transform: "translateX(-50%)",
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              padding: 8,
-              zIndex: 25,
-            }}
-            initial={{ opacity: 0 }}
-            animate={chevronFlash ? { opacity: 1 } : { opacity: undefined }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: chevronFlash ? 0.18 : 0.4 }}
-          >
-            <svg width="22" height="14" viewBox="0 0 22 14" fill="none" stroke={chevronFlash ? accentHex : "#F5F0E8"} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="3 10 11 4 19 10" />
-            </svg>
-          </motion.button>
-        )}
-      </AnimatePresence>
+        <Info open={infoOpen} onClose={() => setInfoOpen(false)} accentHex={accentHex} />
+        <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      </main>
 
-      {/* Auth error toast */}
-      <AnimatePresence>
-        {authError && (
-          <motion.div
-            key="auth-error"
-            className="absolute left-0 right-0 flex justify-center font-mono"
-            style={{ bottom: 80, zIndex: 30, color: accentHex, fontSize: 10, letterSpacing: "0.3em" }}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
-            transition={{ duration: 0.25 }}
-          >
-            {authError}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Touch zone */}
-      <div
-        className="absolute left-0 right-0 bottom-0"
-        style={{ height: "65%", zIndex: 10 }}
-        onPointerDown={onPress}
-        onPointerMove={onPointerMove}
-        onPointerUp={onRelease}
-        onPointerCancel={onRelease}
-        onPointerLeave={(e) => {
-          if (stateRef.current === "armed" || holdTimeoutRef.current) onRelease(e);
-        }}
-        onContextMenu={(e) => e.preventDefault()}
-      />
-
-      <Info open={infoOpen} onClose={() => setInfoOpen(false)} accentHex={accentHex} />
-      <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      {/* History — stacked positional panel, always mounted, slides over */}
       <History
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
@@ -616,6 +639,6 @@ export function TimerScreen() {
           }}
         />
       )}
-    </main>
+    </>
   );
 }

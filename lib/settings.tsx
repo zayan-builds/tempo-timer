@@ -8,7 +8,17 @@ import {
   useState,
 } from "react";
 
-export type AccentName = "amber" | "blue" | "green" | "red" | "white";
+export type AccentName =
+  | "amber"
+  | "blue"
+  | "green"
+  | "red"
+  | "white"
+  | "purple"
+  | "rose"
+  | "gold"
+  | "teal"
+  | "orange";
 
 export const ACCENT_HEX: Record<AccentName, string> = {
   amber: "#C8853A",
@@ -16,6 +26,11 @@ export const ACCENT_HEX: Record<AccentName, string> = {
   green: "#6FA86F",
   red: "#C8553A",
   white: "#F5F0E8",
+  purple: "#9B59B6",
+  rose: "#E91E8C",
+  gold: "#F1C40F",
+  teal: "#1ABC9C",
+  orange: "#E67E22",
 };
 
 export type Settings = {
