@@ -1,9 +1,7 @@
 const REPO = "zayan-builds/tempo-timer";
 const RELEASES_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
 const ASSET_NAME = "dist.zip";
-const FALLBACK_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "0.1.0";
 const PREF_VERSION_KEY = "tempo.installedVersion";
-const PREF_RESET_KEY = "tempo.updaterReset.v1";
 
 type GitHubAsset = { name: string; browser_download_url: string };
 type GitHubRelease = { tag_name?: string; assets?: GitHubAsset[] };
@@ -98,21 +96,8 @@ async function fetchWithTimeout(url: string, timeoutMs = 10000): Promise<Respons
 }
 
 export async function checkForUpdate(): Promise<void> {
-  console.log("[updater] checkForUpdate start — FALLBACK_VERSION=" + FALLBACK_VERSION);
+  console.log("[updater] checkForUpdate start");
   setStatus({ download: "idle", error: undefined, done: false });
-
-  // One-time reset: clear any poisoned stored version from before OTA was working.
-  try {
-    const { Preferences } = await import("@capacitor/preferences");
-    const { value: alreadyReset } = await Preferences.get({ key: PREF_RESET_KEY });
-    if (!alreadyReset) {
-      console.log("[updater] first-run reset: clearing stored version");
-      await Preferences.remove({ key: PREF_VERSION_KEY });
-      await Preferences.set({ key: PREF_RESET_KEY, value: "1" });
-    }
-  } catch (e) {
-    console.log("[updater] reset check failed", e);
-  }
 
   let CapacitorUpdater: typeof import("@capgo/capacitor-updater").CapacitorUpdater | null = null;
   try {
@@ -123,11 +108,11 @@ export async function checkForUpdate(): Promise<void> {
     console.log("[updater] plugin import failed", e);
   }
 
-  // Determine current version: prefer Preferences (set only after a confirmed successful set()),
-  // fall back to CapacitorUpdater.current(), then NEXT_PUBLIC_APP_VERSION.
-  let currentVersion = stripV(FALLBACK_VERSION);
+  // Use stored version only if it was written after a confirmed OTA set().
+  // Fresh install (builtin bundle) → "0.0.0" so GitHub release always appears newer.
+  let currentVersion = "0.0.0";
   const stored = await getStoredVersion();
-  console.log("[updater] stored version from Preferences:", stored ?? "(none)");
+  console.log("[updater] stored version:", stored ?? "(none — treating as 0.0.0)");
   if (stored) {
     currentVersion = stored;
   } else if (CapacitorUpdater) {
@@ -140,12 +125,7 @@ export async function checkForUpdate(): Promise<void> {
       console.log("[updater] current() failed", e);
     }
   }
-  // Seed Preferences on first run so future checks are stable.
-  if (!stored) {
-    console.log("[updater] seeding stored version to", currentVersion);
-    await setStoredVersion(currentVersion);
-  }
-  console.log("[updater] currentVersion resolved to:", currentVersion);
+  console.log("[updater] currentVersion:", currentVersion);
   setStatus({ current: currentVersion });
 
   // Fetch release manifest with cache-busting and timeout.
