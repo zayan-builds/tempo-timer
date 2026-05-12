@@ -1,4 +1,3 @@
-const CRED_KEY = "tempo-cred-id";
 const PIN_KEY = "tempo-pin-hash";
 
 function bufToB64(buf: Uint8Array): string {
@@ -7,47 +6,20 @@ function bufToB64(buf: Uint8Array): string {
   return btoa(s);
 }
 
-function b64ToBuf(b64: string): ArrayBuffer {
-  const s = atob(b64);
-  const buf = new ArrayBuffer(s.length);
-  const view = new Uint8Array(buf);
-  for (let i = 0; i < s.length; i++) view[i] = s.charCodeAt(i);
-  return buf;
+async function loadBiometric() {
+  try {
+    return await import("@aparajita/capacitor-biometric-auth");
+  } catch {
+    return null;
+  }
 }
 
 export async function isBiometricAvailable(): Promise<boolean> {
   try {
-    const PKC = (window as unknown as { PublicKeyCredential?: typeof PublicKeyCredential }).PublicKeyCredential;
-    if (!PKC?.isUserVerifyingPlatformAuthenticatorAvailable) return false;
-    return await PKC.isUserVerifyingPlatformAuthenticatorAvailable();
-  } catch {
-    return false;
-  }
-}
-
-export async function registerBiometric(): Promise<boolean> {
-  try {
-    const challenge = crypto.getRandomValues(new Uint8Array(32));
-    const userId = crypto.getRandomValues(new Uint8Array(16));
-    const cred = (await navigator.credentials.create({
-      publicKey: {
-        challenge,
-        rp: { name: "Tempo" },
-        user: { id: userId, name: "tempo-user", displayName: "Tempo" },
-        pubKeyCredParams: [
-          { type: "public-key", alg: -7 },
-          { type: "public-key", alg: -257 },
-        ],
-        authenticatorSelection: {
-          userVerification: "required",
-          authenticatorAttachment: "platform",
-        },
-        timeout: 60000,
-      },
-    })) as PublicKeyCredential | null;
-    if (!cred) return false;
-    localStorage.setItem(CRED_KEY, bufToB64(new Uint8Array(cred.rawId)));
-    return true;
+    const mod = await loadBiometric();
+    if (!mod) return false;
+    const info = await mod.BiometricAuth.checkBiometry();
+    return info.isAvailable;
   } catch {
     return false;
   }
@@ -55,22 +27,32 @@ export async function registerBiometric(): Promise<boolean> {
 
 export async function verifyBiometric(): Promise<boolean> {
   try {
-    const idB64 = localStorage.getItem(CRED_KEY);
-    if (!idB64) return false;
-    const id = b64ToBuf(idB64);
-    const challenge = crypto.getRandomValues(new Uint8Array(32));
-    const result = await navigator.credentials.get({
-      publicKey: {
-        challenge,
-        allowCredentials: [{ type: "public-key", id }],
-        userVerification: "required",
-        timeout: 60000,
-      },
+    const mod = await loadBiometric();
+    if (!mod) return false;
+    const info = await mod.BiometricAuth.checkBiometry();
+    if (!info.isAvailable) return false;
+    await mod.BiometricAuth.authenticate({
+      reason: "Verify your identity to access solve history",
+      cancelTitle: "Cancel",
+      allowDeviceCredential: true,
+      androidTitle: "Tempo",
+      androidSubtitle: "Confirm fingerprint",
+      androidConfirmationRequired: false,
     });
-    return !!result;
+    return true;
   } catch {
     return false;
   }
+}
+
+// Native biometry has no app-side enrolment; success here just means
+// "the user can authenticate", which is what the Settings flow needs.
+export async function registerBiometric(): Promise<boolean> {
+  return verifyBiometric();
+}
+
+export function hasBiometricCredential(): boolean {
+  return true;
 }
 
 async function hashPin(pin: string): Promise<string> {
@@ -90,14 +72,9 @@ export async function verifyPin(pin: string): Promise<boolean> {
 }
 
 export function clearAuth(): void {
-  localStorage.removeItem(CRED_KEY);
   localStorage.removeItem(PIN_KEY);
 }
 
 export function hasPin(): boolean {
   return !!localStorage.getItem(PIN_KEY);
-}
-
-export function hasBiometricCredential(): boolean {
-  return !!localStorage.getItem(CRED_KEY);
 }
