@@ -145,13 +145,13 @@ function Row({ solve, isPB, revealed, collapsing, onReveal, onDelete, onShare, a
         layout={false}
         drag="x"
         dragConstraints={{ left: -DELETE_WIDTH, right: 0 }}
-        dragElastic={0.3}
+        dragElastic={0.1}
         dragMomentum={false}
         onDragStart={handleDragStart}
         onDrag={handleDrag}
         onDragEnd={handleDragEnd}
         animate={{ x: revealed ? -DELETE_WIDTH : 0 }}
-        transition={{ type: "spring", stiffness: 320, damping: 32 }}
+        transition={{ type: "spring", stiffness: 400, damping: 40 }}
         onPointerDown={pressStart}
         onPointerUp={pressEnd}
         onPointerCancel={pressEnd}
@@ -259,24 +259,29 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
   const [confirmClear, setConfirmClear] = useState(false);
   const [shareData, setShareData] = useState<{ solve: Solve; isPB: boolean; comparison: string } | null>(null);
   const shareRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  const startYRef = useRef<number | null>(null);
-  const scrollTopRef = useRef(0);
+  const dragRef = useRef<{ y: number; x: number } | null>(null);
 
-  function onPointerDownContainer(e: React.PointerEvent) {
-    scrollTopRef.current = (e.currentTarget as HTMLElement).scrollTop;
-    startYRef.current = e.clientY;
+  function onHandlePointerDown(e: React.PointerEvent) {
+    const scrollTop = scrollRef.current?.scrollTop ?? 0;
+    if (scrollTop !== 0) return;
+    dragRef.current = { y: e.clientY, x: e.clientX };
   }
-  function onPointerMoveContainer(e: React.PointerEvent) {
-    if (startYRef.current === null) return;
-    if (scrollTopRef.current > 4) return;
-    if (e.clientY - startYRef.current > 60) {
-      startYRef.current = null;
+  function onHandlePointerMove(e: React.PointerEvent) {
+    const d = dragRef.current;
+    if (!d) return;
+    const dy = e.clientY - d.y;
+    const dx = Math.abs(e.clientX - d.x);
+    if (dy > 80 && dx < 20) {
+      dragRef.current = null;
       onClose();
+    } else if (dy < -10 || dx > 30) {
+      dragRef.current = null;
     }
   }
-  function onPointerUpContainer() {
-    startYRef.current = null;
+  function onHandlePointerUp() {
+    dragRef.current = null;
   }
 
   function handleDeleteWithCollapse(id: string) {
@@ -337,16 +342,47 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
         flexDirection: "column",
       }}
     >
+      {/* Dedicated drag handle — only place where pull-down closes the panel */}
       <div
+        aria-hidden
+        onPointerDown={onHandlePointerDown}
+        onPointerMove={onHandlePointerMove}
+        onPointerUp={onHandlePointerUp}
+        onPointerCancel={onHandlePointerUp}
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 60,
+          zIndex: 50,
+          touchAction: "none",
+          background: "transparent",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: 14,
+            transform: "translateX(-50%)",
+            width: 36,
+            height: 4,
+            borderRadius: 2,
+            background: "rgba(245,240,232,0.18)",
+          }}
+        />
+      </div>
+
+      <div
+        ref={scrollRef}
         className="overflow-y-auto"
         style={{
           flex: 1,
           WebkitOverflowScrolling: "touch",
+          touchAction: "pan-y",
+          overscrollBehavior: "contain",
         }}
-        onPointerDown={onPointerDownContainer}
-        onPointerMove={onPointerMoveContainer}
-        onPointerUp={onPointerUpContainer}
-        onPointerCancel={onPointerUpContainer}
         onClick={() => setRevealedFor(null)}
       >
         <div

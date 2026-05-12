@@ -26,7 +26,7 @@ export function PinPad({ mode, accentHex, onCancel, onSubmit, title }: Props) {
         return;
       }
       if (pin !== first) {
-        setError("PINs don't match");
+        setError("codes don't match");
         setCurrent("");
         setFirst("");
         setStage("first");

@@ -1,7 +1,8 @@
-const RELEASES_URL =
-  "https://api.github.com/repos/zayan-builds/tempo-timer/releases/latest";
+const REPO = "zayan-builds/tempo-timer";
+const RELEASES_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
 const ASSET_NAME = "dist.zip";
 const FALLBACK_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "0.1.0";
+const PREF_VERSION_KEY = "tempo.installedVersion";
 
 type GitHubAsset = { name: string; browser_download_url: string };
 type GitHubRelease = { tag_name?: string; assets?: GitHubAsset[] };
@@ -57,6 +58,44 @@ function compareVersions(a: string, b: string): "same" | "newer" | "older" {
   return "same";
 }
 
+async function getStoredVersion(): Promise<string | null> {
+  try {
+    const { Preferences } = await import("@capacitor/preferences");
+    const { value } = await Preferences.get({ key: PREF_VERSION_KEY });
+    return value ? stripV(value) : null;
+  } catch (e) {
+    console.log("[updater] preferences get failed", e);
+    return null;
+  }
+}
+
+async function setStoredVersion(version: string) {
+  try {
+    const { Preferences } = await import("@capacitor/preferences");
+    await Preferences.set({ key: PREF_VERSION_KEY, value: stripV(version) });
+  } catch (e) {
+    console.log("[updater] preferences set failed", e);
+  }
+}
+
+async function fetchWithTimeout(url: string, timeoutMs = 10000): Promise<Response> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(new Error(`timeout after ${timeoutMs}ms`)), timeoutMs);
+  try {
+    return await fetch(url, {
+      cache: "no-store",
+      signal: ctrl.signal,
+      headers: {
+        Accept: "application/vnd.github+json",
+        "Cache-Control": "no-cache",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 export async function checkForUpdate(): Promise<void> {
   console.log("[updater] checkForUpdate start");
   setStatus({ download: "idle", error: undefined, done: false });
@@ -70,47 +109,51 @@ export async function checkForUpdate(): Promise<void> {
     console.log("[updater] plugin import failed", e);
   }
 
-  let currentVersion = FALLBACK_VERSION;
-  if (CapacitorUpdater) {
+  // Determine current version: prefer Preferences (set on every successful apply),
+  // fall back to CapacitorUpdater.current(), then NEXT_PUBLIC_APP_VERSION.
+  let currentVersion = stripV(FALLBACK_VERSION);
+  const stored = await getStoredVersion();
+  if (stored) {
+    currentVersion = stored;
+  } else if (CapacitorUpdater) {
     try {
       const cur = await CapacitorUpdater.current();
-      console.log("[updater] CapacitorUpdater.current() =>", cur);
       const fromBundle = (cur as unknown as { bundle?: { version?: string } }).bundle?.version;
-      currentVersion = stripV(fromBundle || FALLBACK_VERSION);
+      if (fromBundle) currentVersion = stripV(fromBundle);
+      console.log("[updater] CapacitorUpdater.current() =>", cur);
     } catch (e) {
-      console.log("[updater] current() failed, using fallback", e);
-      currentVersion = stripV(FALLBACK_VERSION);
+      console.log("[updater] current() failed", e);
     }
-  } else {
-    currentVersion = stripV(FALLBACK_VERSION);
   }
+  // Seed Preferences on first run so future checks are stable.
+  if (!stored) await setStoredVersion(currentVersion);
   setStatus({ current: currentVersion });
 
-  let release: GitHubRelease;
+  // Fetch release manifest with cache-busting and timeout.
+  let release: GitHubRelease | null = null;
+  const cacheBuster = `?t=${Date.now()}`;
   try {
-    const url = `${RELEASES_URL}?t=${Date.now()}`;
+    const url = RELEASES_URL + cacheBuster;
     console.log("[updater] fetching", url);
-    const res = await fetch(url, {
-      cache: "no-store",
-      headers: {
-        Accept: "application/vnd.github+json",
-        "Cache-Control": "no-cache",
-      },
-    });
+    const res = await fetchWithTimeout(url, 10000);
     console.log("[updater] GitHub status", res.status);
     if (!res.ok) {
-      setStatus({ error: `GitHub ${res.status}`, done: true });
+      setStatus({ error: `GitHub HTTP ${res.status}`, done: true });
       return;
     }
     release = (await res.json()) as GitHubRelease;
   } catch (e) {
-    console.log("[updater] fetch failed", e);
-    setStatus({ error: "fetch failed", done: true });
+    const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    console.log("[updater] fetch failed:", msg);
+    setStatus({ error: `fetch: ${msg}`, done: true });
     return;
   }
 
   const latest = stripV(release.tag_name || "");
-  console.log("[updater] release", { tag: release.tag_name, assets: (release.assets || []).map((a) => a.name) });
+  console.log("[updater] release", {
+    tag: release.tag_name,
+    assets: (release.assets || []).map((a) => a.name),
+  });
   if (!latest) {
     setStatus({ error: "no tag on release", done: true });
     return;
@@ -126,14 +169,14 @@ export async function checkForUpdate(): Promise<void> {
     return;
   }
 
-  const asset = (release.assets || []).find((a) => a.name === ASSET_NAME);
-  const assetFound = !!asset?.browser_download_url;
-  console.log("[updater] dist.zip asset found?", assetFound, asset?.browser_download_url);
-  setStatus({ assetFound });
-  if (!asset?.browser_download_url) {
-    setStatus({ error: "no dist.zip", download: "failed", done: true });
-    return;
+  // Locate dist.zip — fall back to the well-known direct path if the asset enumeration is empty.
+  const apiAsset = (release.assets || []).find((a) => a.name === ASSET_NAME);
+  let downloadUrl = apiAsset?.browser_download_url;
+  if (!downloadUrl) {
+    downloadUrl = `https://github.com/${REPO}/releases/download/v${latest}/${ASSET_NAME}`;
+    console.log("[updater] api missing asset, trying fallback url", downloadUrl);
   }
+  setStatus({ assetFound: true });
 
   if (!CapacitorUpdater) {
     setStatus({ error: "plugin unavailable", download: "skipped", done: true });
@@ -142,9 +185,9 @@ export async function checkForUpdate(): Promise<void> {
 
   setStatus({ download: "pending" });
   try {
-    console.log("[updater] downloading bundle", latest);
+    console.log("[updater] downloading bundle", latest, downloadUrl);
     const bundle = await CapacitorUpdater.download({
-      url: asset.browser_download_url,
+      url: downloadUrl,
       version: latest,
     });
     console.log("[updater] download result", bundle);
@@ -154,6 +197,7 @@ export async function checkForUpdate(): Promise<void> {
     }
     console.log("[updater] applying bundle", bundle.id);
     await CapacitorUpdater.set({ id: bundle.id });
+    await setStoredVersion(latest);
     console.log("[updater] set() complete, reloading…");
     setStatus({ download: "ok", done: true });
     try {
@@ -162,7 +206,8 @@ export async function checkForUpdate(): Promise<void> {
       console.log("[updater] reload() failed (will apply on next launch)", e);
     }
   } catch (e) {
-    console.log("[updater] download/apply failed", e);
-    setStatus({ download: "failed", error: String(e), done: true });
+    const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    console.log("[updater] download/apply failed:", msg);
+    setStatus({ download: "failed", error: msg, done: true });
   }
 }
