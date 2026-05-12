@@ -1,7 +1,6 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { ACCENT_HEX, AccentName, useSettings } from "@/lib/settings";
-import { checkForUpdate, subscribeUpdater, UpdaterStatus } from "@/lib/updater";
 import {
   clearAuth,
   isBiometricAvailable,
@@ -94,45 +93,10 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
   const [pinSetupOpen, setPinSetupOpen] = useState(false);
   const [pinDisableOpen, setPinDisableOpen] = useState(false);
   const [authToast, setAuthToast] = useState<string | null>(null);
-  const [proExplainerOpen, setProExplainerOpen] = useState(false);
-  const proExplainerTouched = useRef(false);
-  const [updateStatus, setUpdateStatus] = useState<UpdaterStatus | null>(null);
-  const [updateRunning, setUpdateRunning] = useState(false);
-  const updateHideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [proTip, setProTip] = useState(false);
 
-  useEffect(() => {
-    return () => {
-      if (updateHideRef.current) clearTimeout(updateHideRef.current);
-    };
-  }, []);
-
-  async function runManualCheck() {
-    if (updateRunning) return;
-    setUpdateRunning(true);
-    setUpdateStatus(null);
-    subscribeUpdater((s) => {
-      setUpdateStatus({ ...s });
-      if (s.done) {
-        if (updateHideRef.current) clearTimeout(updateHideRef.current);
-        updateHideRef.current = setTimeout(() => {
-          setUpdateStatus(null);
-          setUpdateRunning(false);
-          subscribeUpdater(null);
-        }, 5000);
-      }
-    });
-    await checkForUpdate();
-  }
-
-  function updateLabel(): string {
-    if (!updateStatus) return "";
-    if (updateStatus.error) return `error: ${updateStatus.error}`;
-    if (updateStatus.download === "ok") return "updated — restart app";
-    if (updateStatus.download === "pending") return "downloading…";
-    if (updateStatus.download === "skipped") return "up to date";
-    if (updateStatus.compare === "newer") return "update found…";
-    if (updateStatus.current) return `checking… (${updateStatus.current})`;
-    return "checking…";
+  function openReleases() {
+    window.open("https://github.com/zayan-builds/tempo-timer/releases/latest", "_blank");
   }
 
   function showAuthToast() {
@@ -215,27 +179,39 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     trailingLabel={
                       <button
                         aria-label="what is pro mode"
-                        onClick={() => { proExplainerTouched.current = true; setProExplainerOpen((v) => !v); }}
-                        className="font-mono"
+                        onClick={() => setProTip((v) => !v)}
                         style={{
-                          width: 16,
-                          height: 16,
-                          borderRadius: "50%",
+                          width: 44,
+                          height: 44,
                           background: "transparent",
-                          border: `1px solid ${accentHex}80`,
-                          color: accentHex,
-                          opacity: 0.85,
-                          fontSize: 10,
-                          lineHeight: "14px",
-                          padding: 0,
+                          border: "none",
                           cursor: "pointer",
                           display: "inline-flex",
                           alignItems: "center",
                           justifyContent: "center",
                           touchAction: "manipulation",
+                          padding: 0,
+                          flexShrink: 0,
                         }}
                       >
-                        ?
+                        <span
+                          className="font-mono"
+                          style={{
+                            width: 18,
+                            height: 18,
+                            borderRadius: "50%",
+                            border: `1px solid rgba(245,240,232,0.4)`,
+                            color: accentHex,
+                            fontSize: 10,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                            lineHeight: 1,
+                          }}
+                        >
+                          ?
+                        </span>
                       </button>
                     }
                   >
@@ -244,11 +220,9 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                   <div
                     style={{
                       overflow: "hidden",
-                      maxHeight: proExplainerOpen ? 200 : 0,
-                      opacity: proExplainerOpen ? 1 : 0,
-                      transition: proExplainerTouched.current
-                        ? "max-height 0.28s cubic-bezier(0.4,0,0.2,1), opacity 0.28s cubic-bezier(0.4,0,0.2,1)"
-                        : "none",
+                      maxHeight: proTip ? 200 : 0,
+                      opacity: proTip ? 1 : 0,
+                      transition: "max-height 300ms ease, opacity 200ms ease",
                     }}
                   >
                     <p
@@ -260,10 +234,9 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                         lineHeight: 1.7,
                         letterSpacing: "0.04em",
                         paddingBottom: 18,
-                        whiteSpace: "pre-line",
                       }}
                     >
-                      {`Pro Mode shows a scramble at the top before each solve. A scramble is a sequence of moves that randomizes your cube so every solve starts from a fair position.\n\nIt also tracks ao5 and ao12: your rolling average across your last 5 and 12 solves. These show your consistent speed, not just your best time.\n\nRecommended once you can solve reliably under 2 minutes.`}
+                      Pro Mode shows a scramble before each solve — a sequence of moves that randomizes your cube so every solve starts from a fair position. It also tracks ao5 and ao12: your rolling average across your last 5 and 12 solves, showing consistent speed rather than just your best time. Recommended once you can solve reliably under 2 minutes.
                     </p>
                   </div>
                 </div>
@@ -453,43 +426,28 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     letterSpacing: "0.18em",
                   }}
                 >
-                  v0.1.6
+                  v0.1.7
                 </p>
               </div>
 
               <div style={{ marginTop: 48 }}>
                 <button
-                  onClick={runManualCheck}
-                  disabled={updateRunning}
+                  onClick={openReleases}
                   className="font-mono"
                   style={{
                     color: "#F5F0E8",
-                    opacity: updateRunning ? 0.2 : 0.3,
+                    opacity: 0.3,
                     fontSize: 10,
                     letterSpacing: "0.2em",
                     background: "transparent",
                     border: "none",
-                    cursor: updateRunning ? "default" : "pointer",
+                    cursor: "pointer",
                     padding: 0,
                     touchAction: "manipulation",
                   }}
                 >
                   check for updates
                 </button>
-                <p
-                  className="font-mono"
-                  style={{
-                    marginTop: 6,
-                    color: updateStatus?.error ? "#C0392B" : "#F5F0E8",
-                    opacity: updateStatus ? (updateStatus.error ? 0.7 : 0.4) : 0,
-                    fontSize: 10,
-                    letterSpacing: "0.1em",
-                    transition: "opacity 0.2s ease",
-                    minHeight: "1em",
-                  }}
-                >
-                  {updateLabel()}
-                </p>
               </div>
 
               <button

@@ -351,19 +351,6 @@ export function TimerScreen() {
           ?
         </button>
 
-        {/* Logo */}
-        <div
-          className="absolute left-0 right-0 flex justify-center pointer-events-none tempo-stage-chrome"
-          style={{ top: 18, zIndex: 30 }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/tempo-logo.jpeg"
-            alt="Tempo"
-            style={{ height: 28, width: "auto", objectFit: "contain", display: "block" }}
-          />
-        </div>
-
         {/* Settings button */}
         <button
           aria-label="settings"
@@ -467,17 +454,27 @@ export function TimerScreen() {
           </div>
         </div>
 
-        {/* Bottom stats strip — two layers, CSS opacity only */}
+        {/* Bottom area: pro stats (when proMode) or last solve time + history button */}
         <div
           className="absolute left-0 right-0 font-mono"
-          style={{ bottom: "5%", zIndex: 5, height: 44 }}
+          style={{
+            bottom: 0,
+            zIndex: 25,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            paddingBottom: 16,
+            pointerEvents: "none",
+          }}
         >
-          {/* Pro mode: ao5 | last | ao12 */}
+          {/* Pro mode: ao5 | last | ao12 row — above history */}
           <div
-            className="absolute inset-0 flex justify-between items-center"
+            className="w-full flex justify-between items-center"
             style={{
               paddingLeft: 24,
               paddingRight: 24,
+              marginBottom: 12,
               opacity: statsVisible && lastSolveMs !== null ? 0.55 : 0,
               transition: "opacity 0.3s ease",
               pointerEvents: "none",
@@ -491,57 +488,49 @@ export function TimerScreen() {
             <span style={{ minWidth: 80, textAlign: "right" }}>{ao12 !== null ? `ao12 ${formatTime(ao12)}` : ""}</span>
           </div>
 
-          {/* Non-pro: last solve */}
+          {/* Last solve time (non-pro, no label) */}
           <div
-            className="absolute inset-0 flex flex-col items-center justify-center"
             style={{
-              opacity: !statsVisible && lastSolveMs !== null && state !== "running" ? 1 : 0,
+              marginBottom: 4,
+              opacity: !statsVisible && lastSolveMs !== null && state !== "running" && state !== "armed" ? 0.4 : 0,
               transition: "opacity 0.3s ease",
               pointerEvents: "none",
             }}
           >
-            <span className="font-mono" style={{ color: "#F5F0E8", opacity: 0.3, fontSize: 10, letterSpacing: "0.3em", marginBottom: 4 }}>
-              last solve
-            </span>
-            <span className="font-mono" style={{ color: "#F5F0E8", opacity: 0.7, fontSize: 13, letterSpacing: "0.08em" }}>
+            <span style={{ color: "#F5F0E8", fontSize: "0.75rem", letterSpacing: "0.08em" }}>
               {lastSolveMs !== null ? formatTime(lastSolveMs) : ""}
             </span>
           </div>
-        </div>
 
-        {/* History button — "history" text, CSS opacity */}
-        <button
-          aria-label="open history"
-          onClick={() => void openHistoryGated()}
-          className="absolute font-mono"
-          style={{
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: 60,
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-            zIndex: 25,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            touchAction: "manipulation",
-            opacity: historyVisible ? 1 : 0,
-            pointerEvents: historyVisible ? "auto" : "none",
-            transition: "opacity 0.4s ease",
-            color: historyFlash ? accentHex : "#F5F0E8",
-          }}
-        >
-          <span style={{
-            fontSize: "0.7rem",
-            letterSpacing: "0.12em",
-            opacity: historyFlash ? 1 : 0.35,
-            transition: "color 0.2s ease, opacity 0.2s ease",
-          }}>
-            history
-          </span>
-        </button>
+          {/* History button */}
+          <button
+            aria-label="open history"
+            onClick={() => void openHistoryGated()}
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              padding: "8px 24px",
+              pointerEvents: historyVisible ? "auto" : "none",
+              opacity: historyVisible ? 1 : 0,
+              transition: "opacity 0.4s ease",
+              touchAction: "manipulation",
+            }}
+          >
+            <span
+              className="font-mono"
+              style={{
+                color: historyFlash ? accentHex : "#F5F0E8",
+                fontSize: "0.7rem",
+                letterSpacing: "0.12em",
+                opacity: historyFlash ? 1 : 0.35,
+                transition: "color 0.2s ease, opacity 0.2s ease",
+              }}
+            >
+              history
+            </span>
+          </button>
+        </div>
 
         {/* Auth error toast — CSS opacity/transform */}
         <div
