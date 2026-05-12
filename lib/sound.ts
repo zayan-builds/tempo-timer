@@ -7,118 +7,118 @@ function getCtx(): AudioContext | null {
       window.AudioContext ||
       (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctor) return null;
-    try {
-      ctx = new Ctor();
-    } catch {
-      return null;
-    }
+    try { ctx = new Ctor(); } catch { return null; }
   }
   if (ctx.state === "suspended") void ctx.resume();
   return ctx;
 }
 
-const WARMTH = 0.85;
-const w = (hz: number) => hz * WARMTH;
-
-type ToneOpts = {
-  startFreq: number;
+type OscOpts = {
+  freq: number;
   endFreq?: number;
-  durationMs: number;
-  volume: number;
-  offsetMs?: number;
   type?: OscillatorType;
-  attackMs?: number;
-  releaseMs?: number;
+  attackS: number;
+  decayS?: number;
+  sustainLevel?: number;
+  releaseS: number;
+  volume: number;
+  offsetS?: number;
 };
 
-function tone(opts: ToneOpts) {
+function osc(opts: OscOpts) {
   const c = getCtx();
   if (!c) return;
-  const start = c.currentTime + (opts.offsetMs ?? 0) / 1000;
-  const dur = opts.durationMs / 1000;
-  const end = start + dur;
-  const osc = c.createOscillator();
-  osc.type = opts.type ?? "sine";
-  osc.frequency.setValueAtTime(opts.startFreq, start);
+  const t0 = c.currentTime + (opts.offsetS ?? 0);
+  const peakT = t0 + opts.attackS;
+  const sustainLevel = opts.sustainLevel ?? opts.volume;
+  const decayT = peakT + (opts.decayS ?? 0);
+  const releaseT = decayT + opts.releaseS;
+
+  const o = c.createOscillator();
+  o.type = opts.type ?? "sine";
+  o.frequency.setValueAtTime(opts.freq, t0);
   if (opts.endFreq != null) {
-    osc.frequency.linearRampToValueAtTime(opts.endFreq, end);
+    o.frequency.linearRampToValueAtTime(opts.endFreq, releaseT);
   }
-  const gain = c.createGain();
-  const attack = (opts.attackMs ?? Math.min(20, opts.durationMs / 3)) / 1000;
-  const release = (opts.releaseMs ?? Math.min(80, opts.durationMs / 2)) / 1000;
-  gain.gain.setValueAtTime(0, start);
-  gain.gain.linearRampToValueAtTime(opts.volume, start + attack);
-  gain.gain.setValueAtTime(opts.volume, Math.max(start + attack, end - release));
-  gain.gain.linearRampToValueAtTime(0, end);
-  osc.connect(gain).connect(c.destination);
-  osc.start(start);
-  osc.stop(end + 0.05);
+
+  const g = c.createGain();
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(opts.volume, peakT);
+  g.gain.linearRampToValueAtTime(sustainLevel, decayT);
+  g.gain.linearRampToValueAtTime(0, releaseT);
+
+  o.connect(g).connect(c.destination);
+  o.start(t0);
+  o.stop(releaseT + 0.02);
 }
 
-// Soft reverb tail via a brief decaying sine ping
-function tail(freq: number, delayMs: number, volume: number, durMs = 220) {
-  tone({
-    startFreq: freq,
-    durationMs: durMs,
-    volume,
-    offsetMs: delayMs,
-    attackMs: 40,
-    releaseMs: 180,
-  });
+// Simple feedback delay for reverb-like tail
+function delayTail(freq: number, offsetS: number, volume: number) {
+  const c = getCtx();
+  if (!c) return;
+  const t0 = c.currentTime + offsetS;
+  const o = c.createOscillator();
+  o.type = "sine";
+  o.frequency.setValueAtTime(freq, t0);
+  const g = c.createGain();
+  g.gain.setValueAtTime(volume, t0);
+  g.gain.linearRampToValueAtTime(0, t0 + 0.35);
+  o.connect(g).connect(c.destination);
+  o.start(t0);
+  o.stop(t0 + 0.37);
 }
 
 export const sounds = {
-  // Anticipation, not alert — soft attack, gentle rise
-  armed: () =>
-    tone({
-      startFreq: w(360),
-      endFreq: w(440),
-      durationMs: 260,
-      volume: 0.13,
-      attackMs: 80,
-      releaseMs: 140,
-    }),
-  // Ultra-short, punchy click
-  start: () =>
-    tone({
-      startFreq: w(880),
-      endFreq: w(760),
-      durationMs: 55,
-      volume: 0.22,
-      attackMs: 2,
-      releaseMs: 30,
-    }),
-  // Weighted landing + soft reverb tail
+  // Armed — soft G4 sine, musical anticipation
+  armed: () => osc({
+    freq: 392,
+    type: "sine",
+    attackS: 0.01,
+    decayS: 0.1,
+    sustainLevel: 0.12 * 0.3,
+    releaseS: 0.2,
+    volume: 0.12,
+  }),
+
+  // Start — C5 + C6 layered (instant attack, punchy)
+  start: () => {
+    osc({ freq: 523, attackS: 0.001, decayS: 0.08, sustainLevel: 0, releaseS: 0.05, volume: 0.15 });
+    osc({ freq: 1046, type: "sine", attackS: 0.001, decayS: 0.06, sustainLevel: 0, releaseS: 0.04, volume: 0.08 });
+  },
+
+  // Stop — A4 descending to F4 over 250ms, with reverb tail
   stop: () => {
-    tone({
-      startFreq: w(520),
-      endFreq: w(340),
-      durationMs: 260,
-      volume: 0.22,
-      attackMs: 4,
-      releaseMs: 140,
+    osc({
+      freq: 440, endFreq: 349,
+      attackS: 0.001,
+      decayS: 0.05,
+      sustainLevel: 0.18 * 0.7,
+      releaseS: 0.4,
+      volume: 0.18,
     });
-    tail(w(220), 100, 0.06, 260);
+    delayTail(174, 0.08, 0.06); // sub octave reverb tail
   },
-  // Three-note ascending warm chord — earned, not celebratory
+
+  // PB — three-note warm ascending C5 → E5 → G5
   pb: () => {
-    tone({ startFreq: w(523.25), durationMs: 240, volume: 0.2, attackMs: 30, releaseMs: 160 });
-    tone({ startFreq: w(659.25), durationMs: 240, volume: 0.2, offsetMs: 130, attackMs: 30, releaseMs: 160 });
-    tone({ startFreq: w(783.99), durationMs: 320, volume: 0.22, offsetMs: 260, attackMs: 30, releaseMs: 220 });
-    tail(w(523.25 / 2), 320, 0.05, 320);
+    osc({ freq: 523.25, attackS: 0.03, decayS: 0.05, sustainLevel: 0.2 * 0.5, releaseS: 0.22, volume: 0.2 });
+    osc({ freq: 659.25, attackS: 0.03, decayS: 0.05, sustainLevel: 0.2 * 0.5, releaseS: 0.22, volume: 0.2, offsetS: 0.13 });
+    osc({ freq: 783.99, attackS: 0.03, decayS: 0.05, sustainLevel: 0.2 * 0.5, releaseS: 0.3, volume: 0.22, offsetS: 0.26 });
+    delayTail(261, 0.3, 0.05);
   },
+
   newSession: () => {
-    tone({ startFreq: w(523.25), durationMs: 200, volume: 0.13, attackMs: 30, releaseMs: 130 });
-    tone({ startFreq: w(659.25), durationMs: 200, volume: 0.13, offsetMs: 60, attackMs: 30, releaseMs: 130 });
-    tone({ startFreq: w(783.99), durationMs: 200, volume: 0.13, offsetMs: 120, attackMs: 30, releaseMs: 130 });
+    osc({ freq: 523.25, attackS: 0.03, releaseS: 0.16, volume: 0.13 });
+    osc({ freq: 659.25, attackS: 0.03, releaseS: 0.16, volume: 0.13, offsetS: 0.06 });
+    osc({ freq: 783.99, attackS: 0.03, releaseS: 0.16, volume: 0.13, offsetS: 0.12 });
   },
-  inspectionTick: (urgent = false) => {
-    tone({
-      startFreq: w(urgent ? 120 : 80),
-      durationMs: 50,
-      volume: urgent ? 0.18 : 0.1,
-    });
-  },
+
+  inspectionTick: (urgent = false) => osc({
+    freq: urgent ? 120 : 80,
+    attackS: 0.002,
+    releaseS: 0.05,
+    volume: urgent ? 0.18 : 0.1,
+  }),
 };
 
 export function unlockAudio() {

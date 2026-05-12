@@ -186,10 +186,7 @@ export function TimerScreen() {
   }, []);
 
   const openHistoryGated = useCallback(async () => {
-    if (!settings.lockHistory) {
-      setHistoryOpen(true);
-      return;
-    }
+    if (!settings.lockHistory) { setHistoryOpen(true); return; }
     setChevronFlash(true);
     setTimeout(() => setChevronFlash(false), 200);
     if (settings.lockMethod === "biometric") {
@@ -224,28 +221,10 @@ export function TimerScreen() {
   );
 
   const onPointerMove = useCallback(
-    (e: React.PointerEvent) => {
-      if (overlayOpenRef.current) return;
-      const startY = pressStartYRef.current;
-      const startX = pressStartXRef.current;
-      if (startY === null || startX === null || swipeTriggeredRef.current) return;
-      if (stateRef.current === "running" || stateRef.current === "armed") return;
-      // If the hold timer is mid-flight, the user is arming the timer — don't
-      // also fire the swipe-up gesture.
-      if (holdTimeoutRef.current !== null) return;
-      const screenH = typeof window !== "undefined" ? window.innerHeight : 0;
-      if (startY < screenH * 0.7) return;
-      const dy = startY - e.clientY;
-      const dx = Math.abs(e.clientX - startX);
-      if (dy > 60 && dx < 30) {
-        swipeTriggeredRef.current = true;
-        cancelHold();
-        pressStartYRef.current = null;
-        pressStartXRef.current = null;
-        void openHistoryGated();
-      }
+    (_e: React.PointerEvent) => {
+      // Swipe-up-to-open removed — history opens via chevron tap only.
     },
-    [cancelHold, openHistoryGated],
+    [],
   );
 
   const onRelease = useCallback(
@@ -345,9 +324,6 @@ export function TimerScreen() {
           WebkitUserSelect: "none",
           height: "100dvh",
           minHeight: "100dvh",
-          transform: `translate3d(0, ${historyOpen ? "-30%" : "0"}, 0)`,
-          transition: "transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-          willChange: "transform",
           overscrollBehavior: "none",
         }}
       >
@@ -544,32 +520,36 @@ export function TimerScreen() {
           </AnimatePresence>
         </div>
 
-        {/* Chevron — opens history */}
+        {/* Chevron — full-width tap target, opens history */}
         <AnimatePresence>
           {chevronVisible && (
             <motion.button
               key="history-chevron"
               layout={false}
-              aria-label="history"
+              aria-label="open history"
               onClick={() => void openHistoryGated()}
               className={`absolute${chevronFlash ? "" : " tempo-chevron-pulse"}`}
               style={{
-                left: "50%",
-                bottom: 14,
-                transform: "translateX(-50%)",
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: 60,
                 background: "transparent",
                 border: "none",
                 cursor: "pointer",
-                padding: 8,
                 zIndex: 25,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                touchAction: "manipulation",
               }}
               initial={{ opacity: 0 }}
               animate={chevronFlash ? { opacity: 1 } : { opacity: undefined }}
               exit={{ opacity: 0 }}
               transition={{ duration: chevronFlash ? 0.18 : 0.4 }}
             >
-              <svg width="22" height="14" viewBox="0 0 22 14" fill="none" stroke={chevronFlash ? accentHex : "#F5F0E8"} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="3 10 11 4 19 10" />
+              <svg width="24" height="14" viewBox="0 0 24 14" fill="none" stroke={chevronFlash ? accentHex : "#F5F0E8"} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: chevronFlash ? 1 : 0.5 }}>
+                <polyline points="3 11 12 4 21 11" />
               </svg>
             </motion.button>
           )}

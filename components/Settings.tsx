@@ -1,7 +1,8 @@
 "use client";
 import { motion, AnimatePresence } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ACCENT_HEX, AccentName, useSettings } from "@/lib/settings";
+import { checkForUpdate, subscribeUpdater, UpdaterStatus } from "@/lib/updater";
 import {
   clearAuth,
   isBiometricAvailable,
@@ -96,6 +97,44 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
   const [pinDisableOpen, setPinDisableOpen] = useState(false);
   const [authToast, setAuthToast] = useState<string | null>(null);
   const [proExplainerOpen, setProExplainerOpen] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<UpdaterStatus | null>(null);
+  const [updateRunning, setUpdateRunning] = useState(false);
+  const updateHideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (updateHideRef.current) clearTimeout(updateHideRef.current);
+    };
+  }, []);
+
+  async function runManualCheck() {
+    if (updateRunning) return;
+    setUpdateRunning(true);
+    setUpdateStatus(null);
+    subscribeUpdater((s) => {
+      setUpdateStatus({ ...s });
+      if (s.done) {
+        if (updateHideRef.current) clearTimeout(updateHideRef.current);
+        updateHideRef.current = setTimeout(() => {
+          setUpdateStatus(null);
+          setUpdateRunning(false);
+          subscribeUpdater(null);
+        }, 5000);
+      }
+    });
+    await checkForUpdate();
+  }
+
+  function updateLabel(): string {
+    if (!updateStatus) return "";
+    if (updateStatus.error) return `error: ${updateStatus.error}`;
+    if (updateStatus.download === "ok") return "updated — restart app";
+    if (updateStatus.download === "pending") return "downloading…";
+    if (updateStatus.download === "skipped") return "up to date";
+    if (updateStatus.compare === "newer") return "update found…";
+    if (updateStatus.current) return `checking… (${updateStatus.current})`;
+    return "checking…";
+  }
 
   function showAuthToast() {
     setAuthToast("authenticate to disable lock");
@@ -426,11 +465,53 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                 </p>
               </div>
 
+              <div style={{ marginTop: 48 }}>
+                <button
+                  onClick={runManualCheck}
+                  disabled={updateRunning}
+                  className="font-mono"
+                  style={{
+                    color: "#F5F0E8",
+                    opacity: updateRunning ? 0.2 : 0.3,
+                    fontSize: 10,
+                    letterSpacing: "0.2em",
+                    background: "transparent",
+                    border: "none",
+                    cursor: updateRunning ? "default" : "pointer",
+                    padding: 0,
+                    touchAction: "manipulation",
+                  }}
+                >
+                  check for updates
+                </button>
+                <AnimatePresence>
+                  {updateStatus && (
+                    <motion.p
+                      key="update-result"
+                      className="font-mono"
+                      style={{
+                        marginTop: 6,
+                        color: updateStatus.error ? "#C0392B" : "#F5F0E8",
+                        opacity: updateStatus.error ? 0.7 : 0.4,
+                        fontSize: 10,
+                        letterSpacing: "0.1em",
+                      }}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: updateStatus.error ? 0.7 : 0.4 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      {updateLabel()}
+                    </motion.p>
+                  )}
+                </AnimatePresence>
+              </div>
+
               <button
                 onClick={onClose}
                 className="font-mono"
                 style={{
-                  marginTop: 48,
+                  marginTop: 24,
                   color: accentHex,
                   fontSize: 11,
                   letterSpacing: "0.3em",
