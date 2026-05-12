@@ -4,6 +4,7 @@ import { Solve } from "@/hooks/useHistory";
 import { formatTime, isValidFormatted } from "@/lib/format";
 import { getComparison } from "@/lib/comparison";
 import { ShareCard } from "./ShareCard";
+import { lightImpact } from "@/lib/haptics";
 
 type Props = {
   open: boolean;
@@ -60,7 +61,6 @@ function isThisWeek(ts: number): boolean {
 type RowProps = {
   solve: Solve;
   isPB: boolean;
-  pendingDelete: boolean;
   onSwipeDelete: (id: string) => void;
   onShare: (s: Solve) => void;
   accentHex: string;
@@ -68,7 +68,7 @@ type RowProps = {
 
 const SWIPE_COMMIT = 80;
 
-function Row({ solve, isPB, pendingDelete, onSwipeDelete, onShare, accentHex }: RowProps) {
+function Row({ solve, isPB, onSwipeDelete, onShare, accentHex }: RowProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const stripRef = useRef<HTMLDivElement>(null);
@@ -87,7 +87,6 @@ function Row({ solve, isPB, pendingDelete, onSwipeDelete, onShare, accentHex }: 
   }
 
   function onPointerDown(e: React.PointerEvent) {
-    if (pendingDelete) return;
     if ((e.target as HTMLElement).closest("button")) return;
     startXRef.current = e.clientX;
     startYRef.current = e.clientY;
@@ -165,9 +164,8 @@ function Row({ solve, isPB, pendingDelete, onSwipeDelete, onShare, accentHex }: 
       ref={wrapRef}
       style={{
         overflow: "hidden",
-        maxHeight: pendingDelete ? "0px" : "80px",
-        opacity: pendingDelete ? 0 : 1,
-        transition: pendingDelete ? "max-height 240ms ease 120ms, opacity 120ms ease" : "none",
+        maxHeight: "80px",
+        opacity: 1,
         position: "relative",
       }}
     >
@@ -282,30 +280,46 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
 
   const [confirmClear, setConfirmClear] = useState(false);
   const [shareData, setShareData] = useState<{ solve: Solve; isPB: boolean; comparison: string } | null>(null);
-  const [undoState, setUndoState] = useState<{ solve: Solve; timerId: ReturnType<typeof setTimeout> } | null>(null);
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [undoState, setUndoState] = useState<{ solve: Solve } | null>(null);
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingIdRef = useRef<string | null>(null);
   const shareRef = useRef<HTMLDivElement>(null);
 
   function handleSwipeDelete(id: string) {
     const solve = validSolves.find((s) => s.id === id);
     if (!solve) return;
-    setPendingDeleteId(id);
-    if (undoState) {
-      clearTimeout(undoState.timerId);
-      onDelete(undoState.solve.id);
+
+    // Commit any previous pending delete immediately
+    if (pendingTimerRef.current) {
+      clearTimeout(pendingTimerRef.current);
+      if (pendingIdRef.current) onDelete(pendingIdRef.current);
+      pendingTimerRef.current = null;
+      pendingIdRef.current = null;
     }
-    const timerId = setTimeout(() => {
+
+    // Remove row from rendered list — component unmounts, no inline style persists
+    setHiddenIds((prev) => new Set([...prev, id]));
+
+    pendingIdRef.current = id;
+    pendingTimerRef.current = setTimeout(() => {
       onDelete(id);
-      setPendingDeleteId(null);
+      pendingTimerRef.current = null;
+      pendingIdRef.current = null;
+      setHiddenIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
       setUndoState(null);
     }, 3000);
-    setUndoState({ solve, timerId });
+
+    setUndoState({ solve });
   }
 
   function handleUndo() {
-    if (!undoState) return;
-    clearTimeout(undoState.timerId);
-    setPendingDeleteId(null);
+    if (!pendingTimerRef.current) return;
+    clearTimeout(pendingTimerRef.current);
+    const id = pendingIdRef.current;
+    pendingTimerRef.current = null;
+    pendingIdRef.current = null;
+    if (id) setHiddenIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
     setUndoState(null);
   }
 
@@ -399,7 +413,7 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
           history
         </span>
         <button
-          onClick={onClose}
+          onClick={() => { void lightImpact(); onClose(); }}
           className="font-mono"
           style={{
             color: accentHex, fontSize: 11, letterSpacing: "0.3em",
@@ -475,12 +489,11 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
             >
               {g.label}
             </p>
-            {g.items.map((s) => (
+            {g.items.filter((s) => !hiddenIds.has(s.id)).map((s) => (
               <Row
                 key={s.id}
                 solve={s}
                 isPB={pbIds.has(s.id)}
-                pendingDelete={pendingDeleteId === s.id}
                 onSwipeDelete={handleSwipeDelete}
                 onShare={handleShare}
                 accentHex={accentHex}

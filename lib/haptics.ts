@@ -30,6 +30,19 @@ function webFallback(kind: HapticKind) {
   } catch {}
 }
 
+export async function lightImpact(): Promise<void> {
+  const native = await getNative();
+  if (!native) {
+    try { navigator.vibrate(10); } catch {}
+    return;
+  }
+  try {
+    await native.Haptics.impact({ style: native.ImpactStyle.Light });
+  } catch {
+    try { navigator.vibrate(10); } catch {}
+  }
+}
+
 export async function triggerHaptic(kind: HapticKind): Promise<void> {
   const native = await getNative();
   if (!native) {

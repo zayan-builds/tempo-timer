@@ -19,7 +19,7 @@ import { useSettings } from "@/lib/settings";
 import { sounds, unlockAudio } from "@/lib/sound";
 import { verifyBiometric, verifyPin } from "@/lib/auth";
 import { getComparison } from "@/lib/comparison";
-import { triggerHaptic } from "@/lib/haptics";
+import { triggerHaptic, lightImpact } from "@/lib/haptics";
 import { App as CapApp } from "@capacitor/app";
 
 type State = "idle" | "armed" | "running" | "stopped" | "pb";
@@ -337,7 +337,7 @@ export function TimerScreen() {
         {/* Info button */}
         <button
           aria-label="info"
-          onClick={() => setInfoOpen(true)}
+          onClick={() => { void lightImpact(); setInfoOpen(true); }}
           className="absolute font-mono tempo-stage-chrome"
           style={{
             top: 10, left: 12, zIndex: 30,
@@ -354,7 +354,7 @@ export function TimerScreen() {
         {/* Settings button */}
         <button
           aria-label="settings"
-          onClick={() => setSettingsOpen(true)}
+          onClick={() => { void lightImpact(); setSettingsOpen(true); }}
           className="absolute tempo-stage-chrome"
           style={{
             top: 10, right: 12, zIndex: 30,
@@ -488,16 +488,23 @@ export function TimerScreen() {
             <span style={{ minWidth: 80, textAlign: "right" }}>{ao12 !== null ? `ao12 ${formatTime(ao12)}` : ""}</span>
           </div>
 
-          {/* Last solve time (non-pro, no label) */}
+          {/* Last solve: label + time (non-pro) */}
           <div
             style={{
               marginBottom: 4,
-              opacity: !statsVisible && lastSolveMs !== null && state !== "running" && state !== "armed" ? 0.4 : 0,
+              opacity: !statsVisible && lastSolveMs !== null && state !== "running" && state !== "armed" ? 1 : 0,
               transition: "opacity 0.3s ease",
               pointerEvents: "none",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 4,
             }}
           >
-            <span style={{ color: "#F5F0E8", fontSize: "0.75rem", letterSpacing: "0.08em" }}>
+            <span className="font-mono" style={{ color: "#F5F0E8", fontSize: "0.6rem", letterSpacing: "0.12em", opacity: 0.25 }}>
+              last solve
+            </span>
+            <span className="font-mono" style={{ color: "#F5F0E8", fontSize: "0.75rem", letterSpacing: "0.08em", opacity: 0.4 }}>
               {lastSolveMs !== null ? formatTime(lastSolveMs) : ""}
             </span>
           </div>
@@ -505,7 +512,7 @@ export function TimerScreen() {
           {/* History button */}
           <button
             aria-label="open history"
-            onClick={() => void openHistoryGated()}
+            onClick={() => { void lightImpact(); void openHistoryGated(); }}
             style={{
               background: "transparent",
               border: "none",

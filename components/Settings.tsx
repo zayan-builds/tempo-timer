@@ -236,7 +236,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                         paddingBottom: 18,
                       }}
                     >
-                      Pro Mode shows a scramble before each solve — a sequence of moves that randomizes your cube so every solve starts from a fair position. It also tracks ao5 and ao12: your rolling average across your last 5 and 12 solves, showing consistent speed rather than just your best time. Recommended once you can solve reliably under 2 minutes.
+                      Pro Mode shows a scramble before each solve. A scramble is a sequence of moves that randomizes your cube so every solve starts from a fair position. It also tracks ao5 and ao12, your rolling average across your last 5 and 12 solves, showing consistent speed rather than just your best.
                     </p>
                   </div>
                 </div>
@@ -426,7 +426,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     letterSpacing: "0.18em",
                   }}
                 >
-                  v0.1.7
+                  v0.1.8
                 </p>
               </div>
 
