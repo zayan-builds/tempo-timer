@@ -220,7 +220,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                   <div
                     style={{
                       overflow: "hidden",
-                      maxHeight: proTip ? 200 : 0,
+                      maxHeight: proTip ? 400 : 0,
                       opacity: proTip ? 1 : 0,
                       transition: "max-height 300ms ease, opacity 200ms ease",
                     }}
