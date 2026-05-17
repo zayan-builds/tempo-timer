@@ -82,12 +82,9 @@ async function fetchWithTimeout(url: string, timeoutMs = 10000): Promise<Respons
   const t = setTimeout(() => ctrl.abort(new Error(`timeout after ${timeoutMs}ms`)), timeoutMs);
   try {
     return await fetch(url, {
-      cache: "no-store",
       signal: ctrl.signal,
       headers: {
         Accept: "application/vnd.github+json",
-        "Cache-Control": "no-cache",
-        "X-GitHub-Api-Version": "2022-11-28",
       },
     });
   } finally {
