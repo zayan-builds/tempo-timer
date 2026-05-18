@@ -47,6 +47,7 @@ export function TimerScreen() {
   const [typedText, setTypedText] = useState("");
   const [historyFlash, setHistoryFlash] = useState(false);
   const [pinFailCount, setPinFailCount] = useState(0);
+  const [mounted, setMounted] = useState(false);
 
   const startedAtRef = useRef<number>(0);
   const rafRef = useRef<number | null>(null);
@@ -98,6 +99,11 @@ export function TimerScreen() {
     },
     [clearComparisonTimers],
   );
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { scrambleRef.current = scramble; }, [scramble]);
@@ -317,16 +323,17 @@ export function TimerScreen() {
   return (
     <>
       <main
-        className="bg-black overflow-hidden touch-none select-none"
+        className="bg-black touch-none select-none"
         style={{
           position: "fixed",
           inset: 0,
+          overflow: "hidden",
           WebkitUserSelect: "none",
           overscrollBehavior: "none",
         }}
       >
         {/* Bloom */}
-        <div className="tempo-stage-bloom" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+        <div style={{ position: "absolute", inset: 0, pointerEvents: "none", opacity: mounted ? 1 : 0, transition: "opacity 0.2s cubic-bezier(0.4,0,0.2,1)" }}>
           <Bloom state={state} accentHex={accentHex} />
         </div>
 
@@ -343,10 +350,14 @@ export function TimerScreen() {
         <button
           aria-label="info"
           onClick={() => { void lightImpact(); setInfoOpen(true); }}
-          className="absolute font-mono tempo-stage-chrome"
+          className="font-mono"
           style={{
+            position: "absolute",
             top: 10, left: 12, zIndex: 30,
-            color: "#F5F0E8", opacity: 0.35, fontSize: 14,
+            color: "#F5F0E8",
+            opacity: mounted ? 0.35 : 0,
+            transition: "opacity 0.2s cubic-bezier(0.4,0,0.2,1) 0.6s",
+            fontSize: 14,
             background: "transparent", border: "none", cursor: "pointer",
             width: 44, height: 44,
             display: "flex", alignItems: "center", justifyContent: "center",
@@ -360,9 +371,11 @@ export function TimerScreen() {
         <button
           aria-label="settings"
           onClick={() => { void lightImpact(); setSettingsOpen(true); }}
-          className="absolute tempo-stage-chrome"
           style={{
+            position: "absolute",
             top: 10, right: 12, zIndex: 30,
+            opacity: mounted ? 0.35 : 0,
+            transition: "opacity 0.2s cubic-bezier(0.4,0,0.2,1) 0.6s",
             background: "transparent", border: "none", cursor: "pointer",
             width: 44, height: 44,
             display: "flex", alignItems: "center", justifyContent: "center",
@@ -397,7 +410,7 @@ export function TimerScreen() {
 
         {/* Timer + new-best + comparison (fixed vertical position, no layout shift) */}
         <div
-          className="absolute left-0 right-0 tempo-stage-timer"
+          className="absolute left-0 right-0"
           style={{
             top: "45%",
             transform: "translateY(-50%)",
@@ -408,6 +421,9 @@ export function TimerScreen() {
             flexDirection: "column",
             alignItems: "center",
             pointerEvents: "none",
+            opacity: mounted ? 1 : 0,
+            filter: mounted ? "blur(0px)" : "blur(8px)",
+            transition: "opacity 0.4s cubic-bezier(0.4,0,0.2,1) 0.2s, filter 0.4s cubic-bezier(0.4,0,0.2,1) 0.2s",
           }}
         >
           <div style={{ position: "relative", display: "flex", justifyContent: "center", alignItems: "center" }}>

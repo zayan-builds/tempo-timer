@@ -370,7 +370,7 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
         left: 0,
         right: 0,
         zIndex: 1000,
-        height: "92dvh",
+        height: "92vh",
         background: "#000",
         borderTopLeftRadius: 16,
         borderTopRightRadius: 16,
