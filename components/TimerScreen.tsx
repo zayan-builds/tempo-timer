@@ -317,11 +317,11 @@ export function TimerScreen() {
   return (
     <>
       <main
-        className="relative w-full bg-black overflow-hidden touch-none select-none"
+        className="bg-black overflow-hidden touch-none select-none"
         style={{
+          position: "fixed",
+          inset: 0,
           WebkitUserSelect: "none",
-          height: "100dvh",
-          minHeight: "100dvh",
           overscrollBehavior: "none",
         }}
       >

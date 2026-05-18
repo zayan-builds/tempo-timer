@@ -21,6 +21,7 @@ const HOLD_OPTIONS: Array<{ value: 300 | 500 | 750; label: string }> = [
 ];
 
 const HAIRLINE = "1px solid rgba(245,240,232,0.08)";
+const SCRAMBLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%!?[]{}\\^~<>*&=+";
 
 function Row({
   label,
@@ -28,16 +29,18 @@ function Row({
   withDivider = true,
   trailingLabel,
   labelFontSize = 13,
-  settingsOpen = false,
+  animTick = 0,
   rowIndex = -1,
+  accentHex = "#F5F0E8",
 }: {
   label: string;
   children: React.ReactNode;
   withDivider?: boolean;
   trailingLabel?: React.ReactNode;
   labelFontSize?: number;
-  settingsOpen?: boolean;
+  animTick?: number;
   rowIndex?: number;
+  accentHex?: string;
 }) {
   return (
     <div
@@ -53,18 +56,15 @@ function Row({
     >
       <div style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
         <span className="font-mono" style={{ fontSize: labelFontSize, letterSpacing: "0.16em", color: "#F5F0E8", opacity: 0.85, whiteSpace: "nowrap" }}>
-          {label.split("").map((char, i) => (
-            <span
-              key={i}
-              style={rowIndex >= 0 ? (
-                settingsOpen
-                  ? { animation: `tempo-decrypt 1ms ${280 + rowIndex * 80 + i * 15}ms step-end both` }
-                  : { opacity: 0, animation: "none" }
-              ) : undefined}
-            >
-              {char}
-            </span>
-          ))}
+          {label.split("").map((char, i) => {
+            if (rowIndex < 0) return <span key={i}>{char}</span>;
+            const startAt = 280 + rowIndex * 80 + i * 15;
+            const resolveAt = startAt + 220;
+            if (animTick < startAt) return <span key={i} style={{ opacity: 0 }}>{char}</span>;
+            if (animTick >= resolveAt) return <span key={i}>{char}</span>;
+            const rand = SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
+            return <span key={i} style={{ opacity: 0.75, color: accentHex }}>{rand}</span>;
+          })}
         </span>
         {trailingLabel}
       </div>
@@ -110,11 +110,45 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
   const [authToast, setAuthToast] = useState<string | null>(null);
   const [proTip, setProTip] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [animTick, setAnimTick] = useState(0);
+  const animStartRef = useRef<number | null>(null);
+  const animRafRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (open && scrollRef.current) {
       scrollRef.current.scrollTop = 0;
     }
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      animStartRef.current = null;
+      setAnimTick(0);
+      const animate = (now: number) => {
+        if (animStartRef.current === null) animStartRef.current = now;
+        const elapsed = now - animStartRef.current;
+        setAnimTick(elapsed);
+        if (elapsed < 1300) {
+          animRafRef.current = requestAnimationFrame(animate);
+        } else {
+          setAnimTick(9999);
+        }
+      };
+      animRafRef.current = requestAnimationFrame(animate);
+    } else {
+      if (animRafRef.current !== null) {
+        cancelAnimationFrame(animRafRef.current);
+        animRafRef.current = null;
+      }
+      animStartRef.current = null;
+      setAnimTick(0);
+    }
+    return () => {
+      if (animRafRef.current !== null) {
+        cancelAnimationFrame(animRafRef.current);
+        animRafRef.current = null;
+      }
+    };
   }, [open]);
 
   function openReleases() {
@@ -199,8 +233,9 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                   <Row
                     label="PRO MODE"
                     withDivider={false}
-                    settingsOpen={open}
+                    animTick={animTick}
                     rowIndex={0}
+                    accentHex={accentHex}
                     trailingLabel={
                       <button
                         aria-label="what is pro mode"
@@ -268,8 +303,9 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
 
                 <Row
                   label="HAPTICS + SOUND"
-                  settingsOpen={open}
+                  animTick={animTick}
                   rowIndex={1}
+                  accentHex={accentHex}
                   trailingLabel={
                     <button
                       aria-label="preview sound"
@@ -290,7 +326,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                   <Toggle on={settings.haptics} onChange={(v) => update("haptics", v)} accentHex={accentHex} />
                 </Row>
 
-                <Row label="HOLD" labelFontSize={11} settingsOpen={open} rowIndex={2}>
+                <Row label="HOLD" labelFontSize={11} animTick={animTick} rowIndex={2} accentHex={accentHex}>
                   <div style={{ display: "flex", gap: 14, flexShrink: 0 }}>
                     {HOLD_OPTIONS.map((opt) => (
                       <button
@@ -319,17 +355,14 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     className="font-mono"
                     style={{ fontSize: 13, letterSpacing: "0.16em", color: "#F5F0E8", opacity: 0.85 }}
                   >
-                    {"ACCENT".split("").map((char, i) => (
-                      <span
-                        key={i}
-                        style={open
-                          ? { animation: `tempo-decrypt 1ms ${280 + 3 * 80 + i * 15}ms step-end both` }
-                          : { opacity: 0, animation: "none" }
-                        }
-                      >
-                        {char}
-                      </span>
-                    ))}
+                    {"ACCENT".split("").map((char, i) => {
+                      const startAt = 280 + 3 * 80 + i * 15;
+                      const resolveAt = startAt + 220;
+                      if (animTick < startAt) return <span key={i} style={{ opacity: 0 }}>{char}</span>;
+                      if (animTick >= resolveAt) return <span key={i}>{char}</span>;
+                      const rand = SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
+                      return <span key={i} style={{ opacity: 0.75, color: accentHex }}>{rand}</span>;
+                    })}
                   </span>
                   <div
                     style={{
@@ -365,7 +398,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                   </div>
                 </div>
 
-                <Row label="ENCRYPT HISTORY" settingsOpen={open} rowIndex={4}>
+                <Row label="ENCRYPT HISTORY" animTick={animTick} rowIndex={4} accentHex={accentHex}>
                   <Toggle
                     on={settings.encryptHistory}
                     onChange={(v) => update("encryptHistory", v)}
@@ -379,17 +412,14 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                       className="font-mono"
                       style={{ fontSize: 13, letterSpacing: "0.16em", color: "#F5F0E8", opacity: 0.85 }}
                     >
-                      {"LOCK HISTORY".split("").map((char, i) => (
-                        <span
-                          key={i}
-                          style={open
-                            ? { animation: `tempo-decrypt 1ms ${280 + 5 * 80 + i * 15}ms step-end both` }
-                            : { opacity: 0, animation: "none" }
-                          }
-                        >
-                          {char}
-                        </span>
-                      ))}
+                      {"LOCK HISTORY".split("").map((char, i) => {
+                        const startAt = 280 + 5 * 80 + i * 15;
+                        const resolveAt = startAt + 220;
+                        if (animTick < startAt) return <span key={i} style={{ opacity: 0 }}>{char}</span>;
+                        if (animTick >= resolveAt) return <span key={i}>{char}</span>;
+                        const rand = SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
+                        return <span key={i} style={{ opacity: 0.75, color: accentHex }}>{rand}</span>;
+                      })}
                     </span>
                     <Toggle
                       on={settings.lockHistory}
