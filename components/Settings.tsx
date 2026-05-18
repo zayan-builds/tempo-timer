@@ -20,8 +20,6 @@ const HOLD_OPTIONS: Array<{ value: 300 | 500 | 750; label: string }> = [
   { value: 750, label: "0.75s" },
 ];
 
-const LABELS = ["PRO MODE", "HAPTICS + SOUND", "HOLD", "ACCENT", "ENCRYPT HISTORY", "LOCK HISTORY"];
-
 const HAIRLINE = "1px solid rgba(245,240,232,0.08)";
 
 function Row({
@@ -30,14 +28,16 @@ function Row({
   withDivider = true,
   trailingLabel,
   labelFontSize = 13,
-  revealed = Infinity,
+  settingsOpen = false,
+  rowIndex = -1,
 }: {
   label: string;
   children: React.ReactNode;
   withDivider?: boolean;
   trailingLabel?: React.ReactNode;
   labelFontSize?: number;
-  revealed?: number;
+  settingsOpen?: boolean;
+  rowIndex?: number;
 }) {
   return (
     <div
@@ -54,7 +54,16 @@ function Row({
       <div style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
         <span className="font-mono" style={{ fontSize: labelFontSize, letterSpacing: "0.16em", color: "#F5F0E8", opacity: 0.85, whiteSpace: "nowrap" }}>
           {label.split("").map((char, i) => (
-            <span key={i} style={{ opacity: i < revealed ? 1 : 0 }}>{char}</span>
+            <span
+              key={i}
+              style={rowIndex >= 0 ? (
+                settingsOpen
+                  ? { animation: `tempo-decrypt 1ms ${280 + rowIndex * 80 + i * 15}ms step-end both` }
+                  : { opacity: 0, animation: "none" }
+              ) : undefined}
+            >
+              {char}
+            </span>
           ))}
         </span>
         {trailingLabel}
@@ -101,34 +110,11 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
   const [authToast, setAuthToast] = useState<string | null>(null);
   const [proTip, setProTip] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [revealed, setRevealed] = useState<number[]>(LABELS.map(() => 0));
 
   useEffect(() => {
     if (open && scrollRef.current) {
       scrollRef.current.scrollTop = 0;
     }
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) {
-      setRevealed(LABELS.map(() => 0));
-      return;
-    }
-    const timeouts: ReturnType<typeof setTimeout>[] = [];
-    LABELS.forEach((label, rowIdx) => {
-      const staggerOffset = rowIdx * 80;
-      for (let charIdx = 0; charIdx < label.length; charIdx++) {
-        const t = setTimeout(() => {
-          setRevealed((prev) => {
-            const next = [...prev];
-            next[rowIdx] = charIdx + 1;
-            return next;
-          });
-        }, staggerOffset + charIdx * 15);
-        timeouts.push(t);
-      }
-    });
-    return () => timeouts.forEach(clearTimeout);
   }, [open]);
 
   function openReleases() {
@@ -213,7 +199,8 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                   <Row
                     label="PRO MODE"
                     withDivider={false}
-                    revealed={revealed[0]}
+                    settingsOpen={open}
+                    rowIndex={0}
                     trailingLabel={
                       <button
                         aria-label="what is pro mode"
@@ -281,7 +268,8 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
 
                 <Row
                   label="HAPTICS + SOUND"
-                  revealed={revealed[1]}
+                  settingsOpen={open}
+                  rowIndex={1}
                   trailingLabel={
                     <button
                       aria-label="preview sound"
@@ -302,7 +290,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                   <Toggle on={settings.haptics} onChange={(v) => update("haptics", v)} accentHex={accentHex} />
                 </Row>
 
-                <Row label="HOLD" labelFontSize={11} revealed={revealed[2]}>
+                <Row label="HOLD" labelFontSize={11} settingsOpen={open} rowIndex={2}>
                   <div style={{ display: "flex", gap: 14, flexShrink: 0 }}>
                     {HOLD_OPTIONS.map((opt) => (
                       <button
@@ -332,7 +320,15 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     style={{ fontSize: 13, letterSpacing: "0.16em", color: "#F5F0E8", opacity: 0.85 }}
                   >
                     {"ACCENT".split("").map((char, i) => (
-                      <span key={i} style={{ opacity: i < revealed[3] ? 1 : 0 }}>{char}</span>
+                      <span
+                        key={i}
+                        style={open
+                          ? { animation: `tempo-decrypt 1ms ${280 + 3 * 80 + i * 15}ms step-end both` }
+                          : { opacity: 0, animation: "none" }
+                        }
+                      >
+                        {char}
+                      </span>
                     ))}
                   </span>
                   <div
@@ -369,7 +365,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                   </div>
                 </div>
 
-                <Row label="ENCRYPT HISTORY" revealed={revealed[4]}>
+                <Row label="ENCRYPT HISTORY" settingsOpen={open} rowIndex={4}>
                   <Toggle
                     on={settings.encryptHistory}
                     onChange={(v) => update("encryptHistory", v)}
@@ -384,7 +380,15 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                       style={{ fontSize: 13, letterSpacing: "0.16em", color: "#F5F0E8", opacity: 0.85 }}
                     >
                       {"LOCK HISTORY".split("").map((char, i) => (
-                        <span key={i} style={{ opacity: i < revealed[5] ? 1 : 0 }}>{char}</span>
+                        <span
+                          key={i}
+                          style={open
+                            ? { animation: `tempo-decrypt 1ms ${280 + 5 * 80 + i * 15}ms step-end both` }
+                            : { opacity: 0, animation: "none" }
+                          }
+                        >
+                          {char}
+                        </span>
                       ))}
                     </span>
                     <Toggle

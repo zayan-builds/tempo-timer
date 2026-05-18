@@ -303,6 +303,11 @@ export function TimerScreen() {
   const ao5 = avgOfN(solves, 5);
   const ao12 = avgOfN(solves, 12);
 
+  const prevSolveMs = useMemo(() => {
+    const sorted = [...solves].sort((a, b) => b.timestamp - a.timestamp);
+    return sorted.length >= 2 ? sorted[1].time_ms : null;
+  }, [solves]);
+
   const statsVisible = settings.proMode && state !== "running";
   const scrambleVisible = settings.proMode && !!scramble;
   const scrambleOpacity = state === "running" ? 0.18 : 0.6;
@@ -484,15 +489,15 @@ export function TimerScreen() {
             }}
           >
             <span style={{ minWidth: 80 }}>{ao5 !== null ? `ao5  ${formatTime(ao5)}` : ""}</span>
-            <span>{lastSolveMs !== null ? formatTime(lastSolveMs) : ""}</span>
+            <span>{prevSolveMs !== null ? formatTime(prevSolveMs) : ""}</span>
             <span style={{ minWidth: 80, textAlign: "right" }}>{ao12 !== null ? `ao12 ${formatTime(ao12)}` : ""}</span>
           </div>
 
-          {/* Last solve: label + time (non-pro) */}
+          {/* Previous solve (non-pro) */}
           <div
             style={{
               marginBottom: 4,
-              opacity: !statsVisible && lastSolveMs !== null && state !== "running" && state !== "armed" ? 1 : 0,
+              opacity: !statsVisible && prevSolveMs !== null && state !== "running" && state !== "armed" ? 1 : 0,
               transition: "opacity 0.3s ease",
               pointerEvents: "none",
               display: "flex",
@@ -502,10 +507,10 @@ export function TimerScreen() {
             }}
           >
             <span className="font-mono" style={{ color: "#F5F0E8", fontSize: "0.6rem", letterSpacing: "0.12em", opacity: 0.25 }}>
-              last solve
+              prev
             </span>
             <span className="font-mono" style={{ color: "#F5F0E8", fontSize: "0.75rem", letterSpacing: "0.08em", opacity: 0.4 }}>
-              {lastSolveMs !== null ? formatTime(lastSolveMs) : ""}
+              {prevSolveMs !== null ? formatTime(prevSolveMs) : ""}
             </span>
           </div>
 

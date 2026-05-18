@@ -105,3 +105,8 @@ button, [role="button"] {
 .tempo-pb-flash {
   animation: tempo-pb-flash 0.18s ease-out forwards;
 }
+
+@keyframes tempo-decrypt {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
