@@ -47,7 +47,6 @@ export function TimerScreen() {
   const [typedText, setTypedText] = useState("");
   const [historyFlash, setHistoryFlash] = useState(false);
   const [pinFailCount, setPinFailCount] = useState(0);
-  const [mounted, setMounted] = useState(false);
 
   const startedAtRef = useRef<number>(0);
   const rafRef = useRef<number | null>(null);
@@ -101,10 +100,6 @@ export function TimerScreen() {
     [clearComparisonTimers],
   );
 
-  useEffect(() => {
-    const id = requestAnimationFrame(() => setMounted(true));
-    return () => cancelAnimationFrame(id);
-  }, []);
 
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { scrambleRef.current = scramble; }, [scramble]);
@@ -336,14 +331,14 @@ export function TimerScreen() {
         className="bg-black touch-none select-none"
         style={{
           position: "fixed",
-          inset: 0,
+          top: 0, left: 0, right: 0, bottom: 0,
           overflow: "hidden",
           WebkitUserSelect: "none",
           overscrollBehavior: "none",
         }}
       >
         {/* Bloom */}
-        <div style={{ position: "absolute", inset: 0, pointerEvents: "none", opacity: mounted ? 1 : 0, transition: "opacity 0.2s cubic-bezier(0.4,0,0.2,1)" }}>
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, pointerEvents: "none" }}>
           <Bloom state={state} accentHex={accentHex} />
         </div>
 
@@ -365,8 +360,7 @@ export function TimerScreen() {
             position: "absolute",
             top: 10, left: 12, zIndex: 30,
             color: "#F5F0E8",
-            opacity: mounted ? 0.35 : 0,
-            transition: "opacity 0.2s cubic-bezier(0.4,0,0.2,1) 0.6s",
+            opacity: 0.35,
             fontSize: 14,
             background: "transparent", border: "none", cursor: "pointer",
             width: 44, height: 44,
@@ -384,8 +378,7 @@ export function TimerScreen() {
           style={{
             position: "absolute",
             top: 10, right: 12, zIndex: 30,
-            opacity: mounted ? 0.35 : 0,
-            transition: "opacity 0.2s cubic-bezier(0.4,0,0.2,1) 0.6s",
+            opacity: 0.35,
             background: "transparent", border: "none", cursor: "pointer",
             width: 44, height: 44,
             display: "flex", alignItems: "center", justifyContent: "center",
@@ -431,9 +424,6 @@ export function TimerScreen() {
             flexDirection: "column",
             alignItems: "center",
             pointerEvents: "none",
-            opacity: mounted ? 1 : 0,
-            filter: mounted ? "blur(0px)" : "blur(8px)",
-            transition: "opacity 0.4s cubic-bezier(0.4,0,0.2,1) 0.2s, filter 0.4s cubic-bezier(0.4,0,0.2,1) 0.2s",
           }}
         >
           <div style={{ position: "relative", display: "flex", justifyContent: "center", alignItems: "center" }}>
