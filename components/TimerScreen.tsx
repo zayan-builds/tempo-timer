@@ -62,6 +62,7 @@ export function TimerScreen() {
   const comparisonShowRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const comparisonHideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typewriterTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const closeTopOverlayRef = useRef<() => void>(() => {});
 
   const clearComparisonTimers = useCallback(() => {
     if (comparisonShowRef.current) {
@@ -253,32 +254,41 @@ export function TimerScreen() {
     [clearComparisonTimers],
   );
 
+  // Keep ref fresh without ever re-registering event listeners
   useEffect(() => {
-    const handleBack = () => {
+    closeTopOverlayRef.current = () => {
       if (historyOpen) { setHistoryOpen(false); return; }
       if (settingsOpen) { setSettingsOpen(false); return; }
       if (infoOpen) { setInfoOpen(false); return; }
       if (pinVerifyOpen) { setPinVerifyOpen(false); return; }
       void CapApp.minimizeApp().catch(() => {});
     };
-    const onPopState = (e: PopStateEvent) => {
-      e.preventDefault?.();
-      handleBack();
-      window.history.pushState(null, "", window.location.href);
-    };
+  }, [historyOpen, settingsOpen, infoOpen, pinVerifyOpen]);
+
+  // Register event listeners exactly once — never calls pushState again after mount
+  useEffect(() => {
     if (typeof window !== "undefined") {
       window.history.pushState(null, "", window.location.href);
+    }
+    const onPopState = (e: PopStateEvent) => {
+      e.preventDefault?.();
+      closeTopOverlayRef.current();
+      if (typeof window !== "undefined") {
+        window.history.pushState(null, "", window.location.href);
+      }
+    };
+    if (typeof window !== "undefined") {
       window.addEventListener("popstate", onPopState);
     }
     let remove: (() => void) | null = null;
-    CapApp.addListener("backButton", handleBack)
+    CapApp.addListener("backButton", () => closeTopOverlayRef.current())
       .then((h) => { remove = () => h.remove(); })
       .catch(() => {});
     return () => {
       if (typeof window !== "undefined") window.removeEventListener("popstate", onPopState);
       if (remove) remove();
     };
-  }, [historyOpen, settingsOpen, infoOpen, pinVerifyOpen]);
+  }, []); // empty — runs once on mount only
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -592,9 +602,10 @@ export function TimerScreen() {
           onContextMenu={(e) => e.preventDefault()}
         />
 
-        <Info open={infoOpen} onClose={() => setInfoOpen(false)} accentHex={accentHex} />
-        <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       </main>
+
+      <Info open={infoOpen} onClose={() => setInfoOpen(false)} accentHex={accentHex} />
+      <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
       {/* History panel — always mounted, slides over */}
       <History
