@@ -277,7 +277,6 @@ function TrendGraph({ solves, accentHex }: { solves: Solve[]; accentHex: string 
   const marginRight = 15;
   const marginTop = 20;
   const marginBottom = 20;
-
   const plotWidth = width - marginLeft - marginRight;
   const plotHeight = height - marginTop - marginBottom;
 
@@ -287,40 +286,26 @@ function TrendGraph({ solves, accentHex }: { solves: Solve[]; accentHex: string 
     return { x, y };
   });
 
-  const sum = times.reduce((a, b) => a + b, 0);
-  const avg = sum / n;
-  
+  const avg = times.reduce((a, b) => a + b, 0) / n;
   const yPB = marginTop + plotHeight - ((minTime - yMin) / (yMax - yMin)) * plotHeight;
   const yAvg = marginTop + plotHeight - ((avg - yMin) / (yMax - yMin)) * plotHeight;
-
   const activeIdx = hoveredIdx !== null ? hoveredIdx : n - 1;
   const activeSolve = solves[activeIdx];
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!svgRef.current) return;
     const rect = svgRef.current.getBoundingClientRect();
-    const clientX = e.clientX - rect.left;
-    const xInSvg = (clientX / rect.width) * width;
+    const xInSvg = ((e.clientX - rect.left) / rect.width) * width;
     const relativeX = xInSvg - marginLeft;
-    
-    let index = Math.round((relativeX / plotWidth) * (n - 1));
-    index = Math.max(0, Math.min(n - 1, index));
+    const index = Math.max(0, Math.min(n - 1, Math.round((relativeX / plotWidth) * (n - 1))));
     setHoveredIdx(index);
-  };
-
-  const handlePointerLeave = () => {
-    setHoveredIdx(null);
   };
 
   function formatScrubberDate(ts: number): string {
     const date = new Date(ts);
-    const now = Date.now();
-    const diff = now - ts;
+    const diff = Date.now() - ts;
     if (diff < 60 * 1000) return "just now";
-    if (diff < 60 * 60 * 1000) {
-      const mins = Math.floor(diff / (60 * 1000));
-      return `${mins}m ago`;
-    }
+    if (diff < 60 * 60 * 1000) return `${Math.floor(diff / (60 * 1000))}m ago`;
     if (diff < 24 * 60 * 60 * 1000) {
       return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }).toLowerCase();
     }
@@ -359,7 +344,7 @@ function TrendGraph({ solves, accentHex }: { solves: Solve[]; accentHex: string 
         )}
       </div>
 
-      <div style={{ position: "relative", width: "100%", height: height, userSelect: "none", touchAction: "none" }}>
+      <div style={{ position: "relative", width: "100%", height, userSelect: "none", touchAction: "none" }}>
         <svg
           ref={svgRef}
           width="100%"
@@ -367,58 +352,13 @@ function TrendGraph({ solves, accentHex }: { solves: Solve[]; accentHex: string 
           viewBox={`0 0 ${width} ${height}`}
           style={{ overflow: "visible" }}
           onPointerMove={handlePointerMove}
-          onPointerLeave={handlePointerLeave}
+          onPointerLeave={() => setHoveredIdx(null)}
         >
-          <line
-            x1={marginLeft}
-            y1={yPB}
-            x2={width - marginRight}
-            y2={yPB}
-            stroke={accentHex}
-            strokeOpacity={0.2}
-            strokeDasharray="3 3"
-          />
-          <text
-            x={marginLeft - 8}
-            y={yPB + 3}
-            fill={accentHex}
-            opacity={0.5}
-            fontSize={9}
-            textAnchor="end"
-            className="font-mono"
-          >
-            pb
-          </text>
-
-          <line
-            x1={marginLeft}
-            y1={yAvg}
-            x2={width - marginRight}
-            y2={yAvg}
-            stroke="#F5F0E8"
-            strokeOpacity={0.12}
-            strokeDasharray="3 3"
-          />
-          <text
-            x={marginLeft - 8}
-            y={yAvg + 3}
-            fill="#F5F0E8"
-            opacity={0.3}
-            fontSize={9}
-            textAnchor="end"
-            className="font-mono"
-          >
-            avg
-          </text>
-
-          <path
-            d={linePath}
-            fill="none"
-            stroke={accentHex}
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
+          <line x1={marginLeft} y1={yPB} x2={width - marginRight} y2={yPB} stroke={accentHex} strokeOpacity={0.2} strokeDasharray="3 3" />
+          <text x={marginLeft - 8} y={yPB + 3} fill={accentHex} opacity={0.5} fontSize={9} textAnchor="end" className="font-mono">pb</text>
+          <line x1={marginLeft} y1={yAvg} x2={width - marginRight} y2={yAvg} stroke="#F5F0E8" strokeOpacity={0.12} strokeDasharray="3 3" />
+          <text x={marginLeft - 8} y={yAvg + 3} fill="#F5F0E8" opacity={0.3} fontSize={9} textAnchor="end" className="font-mono">avg</text>
+          <path d={linePath} fill="none" stroke={accentHex} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
 
           {hoveredIdx !== null && (
             <>
@@ -432,36 +372,15 @@ function TrendGraph({ solves, accentHex }: { solves: Solve[]; accentHex: string 
                 strokeWidth="1"
                 strokeDasharray="2 2"
               />
-              <circle
-                cx={points[hoveredIdx].x}
-                cy={points[hoveredIdx].y}
-                r="4.5"
-                fill={accentHex}
-                stroke="#000000"
-                strokeWidth="1.5"
-              />
+              <circle cx={points[hoveredIdx].x} cy={points[hoveredIdx].y} r="4.5" fill={accentHex} stroke="#000000" strokeWidth="1.5" />
             </>
           )}
-          
-          <line
-            x1={marginLeft}
-            y1={marginTop}
-            x2={marginLeft}
-            y2={marginTop + plotHeight}
-            stroke="#F5F0E8"
-            strokeOpacity={0.05}
-          />
-          <line
-            x1={width - marginRight}
-            y1={marginTop}
-            x2={width - marginRight}
-            y2={marginTop + plotHeight}
-            stroke="#F5F0E8"
-            strokeOpacity={0.05}
-          />
+
+          <line x1={marginLeft} y1={marginTop} x2={marginLeft} y2={marginTop + plotHeight} stroke="#F5F0E8" strokeOpacity={0.05} />
+          <line x1={width - marginRight} y1={marginTop} x2={width - marginRight} y2={marginTop + plotHeight} stroke="#F5F0E8" strokeOpacity={0.05} />
         </svg>
       </div>
-      
+
       <p className="font-mono text-center" style={{ color: "#F5F0E8", opacity: 0.18, fontSize: 8, letterSpacing: "0.15em", marginTop: 16 }}>
         scrub timeline to see historical solves
       </p>

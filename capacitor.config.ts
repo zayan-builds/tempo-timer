@@ -21,7 +21,11 @@ const config: CapacitorConfig = {
       backgroundColor: '#000000'
     },
     CapacitorUpdater: {
-      autoUpdate: false
+      autoUpdate: false,
+      resetWhenUpdate: true,
+      autoDeleteFailed: true,
+      autoDeletePrevious: true,
+      version: '0.1.13'
     }
   }
 };

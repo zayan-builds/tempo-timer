@@ -20,9 +20,12 @@ export function Info({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (open && scrollRef.current) {
-      scrollRef.current.scrollTop = 0;
-    }
+    if (!open || !scrollRef.current) return;
+    scrollRef.current.scrollTop = 0;
+    const id = requestAnimationFrame(() => {
+      if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    });
+    return () => cancelAnimationFrame(id);
   }, [open]);
 
   return (

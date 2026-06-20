@@ -77,14 +77,16 @@ async function setStoredVersion(version: string) {
   }
 }
 
-async function fetchWithTimeout(url: string, timeoutMs = 10000): Promise<Response> {
+async function fetchWithTimeout(url: string, timeoutMs = 10000, init: RequestInit = {}): Promise<Response> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(new Error(`timeout after ${timeoutMs}ms`)), timeoutMs);
   try {
     return await fetch(url, {
+      ...init,
       signal: ctrl.signal,
       headers: {
         Accept: "application/vnd.github+json",
+        ...(init.headers || {}),
       },
     });
   } finally {
@@ -173,7 +175,7 @@ export async function checkForUpdate(): Promise<void> {
     downloadUrl = `https://github.com/${REPO}/releases/download/v${latest}/${ASSET_NAME}`;
     console.log("[updater] api missing asset, trying fallback url", downloadUrl);
   }
-  setStatus({ assetFound: true });
+  setStatus({ assetFound: Boolean(apiAsset) });
 
   if (!CapacitorUpdater) {
     setStatus({ error: "plugin unavailable", download: "skipped", done: true });
