@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useRef } from "react";
 
 const SECTION_LABEL_STYLE: React.CSSProperties = {
   fontSize: 11,
@@ -16,13 +17,23 @@ export function Info({
   onClose: () => void;
   accentHex: string;
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open && scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
+    }
+  }, [open]);
+
   return (
     <div
+      ref={scrollRef}
       className="fixed inset-0 z-50 overflow-y-auto"
       style={{
         background: "rgba(0, 0, 0, 0.97)",
         backdropFilter: "blur(8px)",
         WebkitBackdropFilter: "blur(8px)",
+        WebkitOverflowScrolling: "touch",
         opacity: open ? 1 : 0,
         pointerEvents: open ? "auto" : "none",
         transition: "opacity 0.25s ease",

@@ -503,7 +503,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     letterSpacing: "0.18em",
                   }}
                 >
-                  v0.1.12
+                  v{process.env.NEXT_PUBLIC_APP_VERSION || "0.1.13"}
                 </p>
               </div>
 

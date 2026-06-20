@@ -247,9 +247,233 @@ function Row({ solve, isPB, onSwipeDelete, onShare, accentHex }: RowProps) {
   );
 }
 
+function TrendGraph({ solves, accentHex }: { solves: Solve[]; accentHex: string }) {
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  if (solves.length < 2) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 260, padding: "0 24px", textAlign: "center" }}>
+        <p className="font-serif italic" style={{ color: "#F5F0E8", opacity: 0.4, fontSize: 24, margin: 0 }}>not enough data</p>
+        <p className="font-mono" style={{ color: "#F5F0E8", opacity: 0.25, fontSize: 10, letterSpacing: "0.18em", marginTop: 12 }}>
+          complete at least two solves to see trend graph
+        </p>
+      </div>
+    );
+  }
+
+  const times = solves.map((s) => s.time_ms);
+  const minTime = Math.min(...times);
+  const maxTime = Math.max(...times);
+  const timeRange = maxTime - minTime || 1000;
+  const paddingY = timeRange * 0.15;
+  const yMin = Math.max(0, minTime - paddingY);
+  const yMax = maxTime + paddingY;
+  const n = solves.length;
+
+  const width = 500;
+  const height = 240;
+  const marginLeft = 40;
+  const marginRight = 15;
+  const marginTop = 20;
+  const marginBottom = 20;
+
+  const plotWidth = width - marginLeft - marginRight;
+  const plotHeight = height - marginTop - marginBottom;
+
+  const points = solves.map((s, i) => {
+    const x = marginLeft + (i / (n - 1)) * plotWidth;
+    const y = marginTop + plotHeight - ((s.time_ms - yMin) / (yMax - yMin)) * plotHeight;
+    return { x, y };
+  });
+
+  const sum = times.reduce((a, b) => a + b, 0);
+  const avg = sum / n;
+  
+  const yPB = marginTop + plotHeight - ((minTime - yMin) / (yMax - yMin)) * plotHeight;
+  const yAvg = marginTop + plotHeight - ((avg - yMin) / (yMax - yMin)) * plotHeight;
+
+  const activeIdx = hoveredIdx !== null ? hoveredIdx : n - 1;
+  const activeSolve = solves[activeIdx];
+
+  const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!svgRef.current) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const clientX = e.clientX - rect.left;
+    const xInSvg = (clientX / rect.width) * width;
+    const relativeX = xInSvg - marginLeft;
+    
+    let index = Math.round((relativeX / plotWidth) * (n - 1));
+    index = Math.max(0, Math.min(n - 1, index));
+    setHoveredIdx(index);
+  };
+
+  const handlePointerLeave = () => {
+    setHoveredIdx(null);
+  };
+
+  function formatScrubberDate(ts: number): string {
+    const date = new Date(ts);
+    const now = Date.now();
+    const diff = now - ts;
+    if (diff < 60 * 1000) return "just now";
+    if (diff < 60 * 60 * 1000) {
+      const mins = Math.floor(diff / (60 * 1000));
+      return `${mins}m ago`;
+    }
+    if (diff < 24 * 60 * 60 * 1000) {
+      return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }).toLowerCase();
+    }
+    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" }).toLowerCase();
+  }
+
+  const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", padding: "0 24px", marginTop: 8 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <span className="font-mono" style={{ color: "#F5F0E8", fontSize: 13, letterSpacing: "0.04em" }}>
+            solve #{activeIdx + 1} <span style={{ color: accentHex }}>{formatTime(activeSolve.time_ms)}</span>
+          </span>
+          <span className="font-mono" style={{ color: "#F5F0E8", opacity: 0.35, fontSize: 10, letterSpacing: "0.04em" }}>
+            {formatScrubberDate(activeSolve.timestamp)}
+          </span>
+        </div>
+        {activeSolve.scramble && (
+          <div
+            className="font-mono"
+            style={{
+              color: "#F5F0E8",
+              opacity: 0.25,
+              fontSize: 9,
+              letterSpacing: "0.02em",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              marginTop: 2,
+            }}
+          >
+            {activeSolve.scramble.toLowerCase()}
+          </div>
+        )}
+      </div>
+
+      <div style={{ position: "relative", width: "100%", height: height, userSelect: "none", touchAction: "none" }}>
+        <svg
+          ref={svgRef}
+          width="100%"
+          height="100%"
+          viewBox={`0 0 ${width} ${height}`}
+          style={{ overflow: "visible" }}
+          onPointerMove={handlePointerMove}
+          onPointerLeave={handlePointerLeave}
+        >
+          <line
+            x1={marginLeft}
+            y1={yPB}
+            x2={width - marginRight}
+            y2={yPB}
+            stroke={accentHex}
+            strokeOpacity={0.2}
+            strokeDasharray="3 3"
+          />
+          <text
+            x={marginLeft - 8}
+            y={yPB + 3}
+            fill={accentHex}
+            opacity={0.5}
+            fontSize={9}
+            textAnchor="end"
+            className="font-mono"
+          >
+            pb
+          </text>
+
+          <line
+            x1={marginLeft}
+            y1={yAvg}
+            x2={width - marginRight}
+            y2={yAvg}
+            stroke="#F5F0E8"
+            strokeOpacity={0.12}
+            strokeDasharray="3 3"
+          />
+          <text
+            x={marginLeft - 8}
+            y={yAvg + 3}
+            fill="#F5F0E8"
+            opacity={0.3}
+            fontSize={9}
+            textAnchor="end"
+            className="font-mono"
+          >
+            avg
+          </text>
+
+          <path
+            d={linePath}
+            fill="none"
+            stroke={accentHex}
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {hoveredIdx !== null && (
+            <>
+              <line
+                x1={points[hoveredIdx].x}
+                y1={marginTop}
+                x2={points[hoveredIdx].x}
+                y2={marginTop + plotHeight}
+                stroke="#F5F0E8"
+                strokeOpacity={0.15}
+                strokeWidth="1"
+                strokeDasharray="2 2"
+              />
+              <circle
+                cx={points[hoveredIdx].x}
+                cy={points[hoveredIdx].y}
+                r="4.5"
+                fill={accentHex}
+                stroke="#000000"
+                strokeWidth="1.5"
+              />
+            </>
+          )}
+          
+          <line
+            x1={marginLeft}
+            y1={marginTop}
+            x2={marginLeft}
+            y2={marginTop + plotHeight}
+            stroke="#F5F0E8"
+            strokeOpacity={0.05}
+          />
+          <line
+            x1={width - marginRight}
+            y1={marginTop}
+            x2={width - marginRight}
+            y2={marginTop + plotHeight}
+            stroke="#F5F0E8"
+            strokeOpacity={0.05}
+          />
+        </svg>
+      </div>
+      
+      <p className="font-mono text-center" style={{ color: "#F5F0E8", opacity: 0.18, fontSize: 8, letterSpacing: "0.15em", marginTop: 16 }}>
+        scrub timeline to see historical solves
+      </p>
+    </div>
+  );
+}
+
 export function History({ open, onClose, solves, onDelete, onClearAll, accentHex }: Props) {
   // One-frame delay so the browser paints translateY(100%) before animating to 0.
   const [animOpen, setAnimOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "graph">("list");
+
   useEffect(() => {
     if (open) {
       const id = requestAnimationFrame(() => setAnimOpen(true));
@@ -417,12 +641,52 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
           flexShrink: 0,
         }}
       >
-        <span
-          className="font-mono italic"
-          style={{ color: "#F5F0E8", fontSize: 11, letterSpacing: "0.3em", opacity: 0.85 }}
-        >
-          history
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <span
+            className="font-mono italic"
+            style={{ color: "#F5F0E8", fontSize: 11, letterSpacing: "0.3em", opacity: 0.85 }}
+          >
+            history
+          </span>
+          {totalSolves > 0 && (
+            <div style={{ display: "flex", gap: 12, marginLeft: 8 }}>
+              <button
+                onClick={() => { void lightImpact(); setViewMode("list"); }}
+                className="font-mono"
+                style={{
+                  color: viewMode === "list" ? accentHex : "#F5F0E8",
+                  opacity: viewMode === "list" ? 1 : 0.3,
+                  fontSize: 10,
+                  letterSpacing: "0.2em",
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "4px 0",
+                  transition: "opacity 0.2s ease, color 0.2s ease",
+                }}
+              >
+                list
+              </button>
+              <button
+                onClick={() => { void lightImpact(); setViewMode("graph"); }}
+                className="font-mono"
+                style={{
+                  color: viewMode === "graph" ? accentHex : "#F5F0E8",
+                  opacity: viewMode === "graph" ? 1 : 0.3,
+                  fontSize: 10,
+                  letterSpacing: "0.2em",
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "4px 0",
+                  transition: "opacity 0.2s ease, color 0.2s ease",
+                }}
+              >
+                graph
+              </button>
+            </div>
+          )}
+        </div>
         <button
           onClick={() => { void lightImpact(); onClose(); }}
           className="font-mono"
@@ -479,44 +743,50 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
           overscrollBehavior: "contain",
         }}
       >
-        {reversed.length === 0 && (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", paddingTop: 80, paddingLeft: SIDE_PAD, paddingRight: SIDE_PAD, textAlign: "center" }}>
-            <p className="font-serif italic" style={{ color: "#F5F0E8", opacity: 0.4, fontSize: 32, margin: 0 }}>no solves yet</p>
-            <p className="font-mono" style={{ color: "#F5F0E8", opacity: 0.25, fontSize: 10, letterSpacing: "0.18em", marginTop: 16 }}>
-              complete your first solve to see history
-            </p>
-          </div>
-        )}
+        {viewMode === "list" ? (
+          <>
+            {reversed.length === 0 && (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", paddingTop: 80, paddingLeft: SIDE_PAD, paddingRight: SIDE_PAD, textAlign: "center" }}>
+                <p className="font-serif italic" style={{ color: "#F5F0E8", opacity: 0.4, fontSize: 32, margin: 0 }}>no solves yet</p>
+                <p className="font-mono" style={{ color: "#F5F0E8", opacity: 0.25, fontSize: 10, letterSpacing: "0.18em", marginTop: 16 }}>
+                  complete your first solve to see history
+                </p>
+              </div>
+            )}
 
-        {groups.map((g) => (
-          <div key={g.label} style={{ marginBottom: 32 }}>
-            <p
-              className="font-mono"
-              style={{
-                color: "#F5F0E8", opacity: 0.35, fontSize: 10,
-                letterSpacing: "0.3em", marginBottom: 12,
-                paddingLeft: SIDE_PAD, paddingRight: SIDE_PAD, textAlign: "left",
-              }}
-            >
-              {g.label}
-            </p>
-            {g.items.filter((s) => !hiddenIds.has(s.id)).map((s) => (
-              <Row
-                key={s.id}
-                solve={s}
-                isPB={pbIds.has(s.id)}
-                onSwipeDelete={handleSwipeDelete}
-                onShare={handleShare}
-                accentHex={accentHex}
-              />
+            {groups.map((g) => (
+              <div key={g.label} style={{ marginBottom: 32 }}>
+                <p
+                  className="font-mono"
+                  style={{
+                    color: "#F5F0E8", opacity: 0.35, fontSize: 10,
+                    letterSpacing: "0.3em", marginBottom: 12,
+                    paddingLeft: SIDE_PAD, paddingRight: SIDE_PAD, textAlign: "left",
+                  }}
+                >
+                  {g.label}
+                </p>
+                {g.items.filter((s) => !hiddenIds.has(s.id)).map((s) => (
+                  <Row
+                    key={s.id}
+                    solve={s}
+                    isPB={pbIds.has(s.id)}
+                    onSwipeDelete={handleSwipeDelete}
+                    onShare={handleShare}
+                    accentHex={accentHex}
+                  />
+                ))}
+              </div>
             ))}
-          </div>
-        ))}
-        <div style={{ height: 80 }} />
+            <div style={{ height: 80 }} />
+          </>
+        ) : (
+          <TrendGraph solves={validSolves} accentHex={accentHex} />
+        )}
       </div>
 
       {/* Footer: clear-all */}
-      {totalSolves > 0 && (
+      {viewMode === "list" && totalSolves > 0 && (
         <div
           style={{
             position: "absolute",
