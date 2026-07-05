@@ -27,18 +27,32 @@ export const ACCENT_HEX: Record<AccentName, string> = {
   gold: "#D4A543",
 };
 
-const DAILY_ACCENT_PALETTE: Record<number, AccentName> = {
-  0: "amber",
-  1: "blue",
-  2: "green",
-  3: "purple",
-  4: "red",
-  5: "gold",
-  6: "white",
+export const DAILY_ACCENT_HEX: Record<number, string> = {
+  0: "#D4865D",
+  1: "#5B8FA8",
+  2: "#6BBF8A",
+  3: "#B883CD",
+  4: "#D65E5E",
+  5: "#C9A84C",
+  6: "#E8DED0",
 };
 
-export function getDailyAccent(): AccentName {
-  return DAILY_ACCENT_PALETTE[new Date().getDay()] ?? "amber";
+const DAILY_ACCENT_NAMES: Record<number, string> = {
+  0: "terracotta",
+  1: "steel blue",
+  2: "sage",
+  3: "lavender",
+  4: "rose",
+  5: "antique gold",
+  6: "cream",
+};
+
+export function getDailyAccent(): string {
+  return DAILY_ACCENT_HEX[new Date().getDay()] ?? ACCENT_HEX.amber;
+}
+
+export function getDailyAccentName(): string {
+  return DAILY_ACCENT_NAMES[new Date().getDay()] ?? "amber";
 }
 
 export type Settings = {
@@ -93,10 +107,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const effectiveAccent = settings.dailyAccent ? getDailyAccent() : settings.accent;
+  const effectiveAccent = settings.dailyAccent ? getDailyAccent() : ACCENT_HEX[settings.accent];
 
   const value = useMemo<Ctx>(
-    () => ({ settings, update, accentHex: ACCENT_HEX[effectiveAccent] }),
+    () => ({ settings, update, accentHex: effectiveAccent }),
     [settings, update, effectiveAccent],
   );
 

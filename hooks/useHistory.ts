@@ -147,7 +147,33 @@ export function useHistory() {
     void clearAllFromDb();
   }, []);
 
-  return { solves, ready, addSolve, deleteSolve, clearAll };
+  const refreshSolves = useCallback(() => {
+    loadAll()
+      .then((items) => { setSolves(items); })
+      .catch(() => {});
+  }, []);
+
+  const bulkImport = useCallback(async (importSolves: Solve[]): Promise<{ imported: number; skipped: number }> => {
+    const db = await openDB();
+    let imported = 0;
+    let skipped = 0;
+    for (const solve of importSolves) {
+      const existing = await new Promise<boolean>((resolve, reject) => {
+        const tx = db.transaction(STORE, "readonly");
+        const req = tx.objectStore(STORE).get(solve.id);
+        req.onsuccess = () => resolve(!!req.result);
+        req.onerror = () => reject(req.error);
+      });
+      if (existing) { skipped++; continue; }
+      await persist(solve, settings.encryptHistory);
+      imported++;
+    }
+    const all = await loadAll();
+    setSolves(all);
+    return { imported, skipped };
+  }, [settings.encryptHistory]);
+
+  return { solves, ready, addSolve, deleteSolve, clearAll, refreshSolves, bulkImport };
 }
 
 export function avgOfN(solves: Solve[], n: number): number | null {

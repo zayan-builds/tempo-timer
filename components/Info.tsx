@@ -89,6 +89,17 @@ export function Info({
               <span style={{ color: accentHex }}>Lock History</span> — requires biometrics before anyone can view your solve history.
             </p>
 
+            <p style={{ ...SECTION_LABEL_STYLE, color: accentHex }}>data management</p>
+            <p style={{ marginBottom: 14, opacity: 0.85 }}>
+              <span style={{ color: accentHex }}>Export</span> — download your full solve history as a JSON file. Includes every solve, scramble, and timestamp. Use it for backup or analysis elsewhere.
+            </p>
+            <p style={{ marginBottom: 14, opacity: 0.85 }}>
+              <span style={{ color: accentHex }}>Import</span> — select a previously exported JSON file to restore solves. Duplicates (same solve ID) are skipped automatically.
+            </p>
+            <p style={{ marginBottom: 8, opacity: 0.85 }}>
+              <span style={{ color: accentHex }}>Daily Accent</span> — when enabled, the accent color changes each day to a unique curated color (terracotta, steel blue, sage, lavender, rose, antique gold, cream). These are separate from the manual accent picker.
+            </p>
+
             <button
               onClick={onClose}
               className="font-mono"

@@ -1,6 +1,8 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { ACCENT_HEX, AccentName, getDailyAccent, useSettings } from "@/lib/settings";
+import { ACCENT_HEX, AccentName, getDailyAccentName, useSettings } from "@/lib/settings";
+import { exportSolves, parseImport, downloadJson } from "@/lib/export";
+import { useHistory } from "@/hooks/useHistory";
 import {
   clearAuth,
   isBiometricAvailable,
@@ -9,6 +11,7 @@ import {
   verifyBiometric,
 } from "@/lib/auth";
 import { sounds, unlockAudio } from "@/lib/sound";
+import { lightImpact } from "@/lib/haptics";
 import { PinPad } from "./PinPad";
 
 const ACCENT_ORDER: AccentName[] = [
@@ -86,7 +89,7 @@ function Row({
 function Toggle({ on, onChange, accentHex }: { on: boolean; onChange: (v: boolean) => void; accentHex: string }) {
   return (
     <button
-      onClick={() => onChange(!on)}
+      onClick={() => { void lightImpact(); onChange(!on); }}
       className="font-mono"
       style={{
         color: on ? accentHex : "#F5F0E8",
@@ -115,39 +118,17 @@ function SpeakerIcon({ size = 12, opacity = 0.4 }: { size?: number; opacity?: nu
 
 export function Settings({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { settings, update, accentHex } = useSettings();
+  const { solves, bulkImport } = useHistory();
   const [pinSetupOpen, setPinSetupOpen] = useState(false);
   const [pinDisableOpen, setPinDisableOpen] = useState(false);
   const [authToast, setAuthToast] = useState<string | null>(null);
+  const [importToast, setImportToast] = useState<string | null>(null);
   const [proTip, setProTip] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [animTick, setAnimTick] = useState(0);
   const animStartRef = useRef<number | null>(null);
   const animRafRef = useRef<number | null>(null);
-  const [encryptAnimTick, setEncryptAnimTick] = useState(0);
-  const encryptAnimRafRef = useRef<number | null>(null);
-  const prevEncryptRef = useRef(settings.encryptHistory);
-
-  useEffect(() => {
-    const prev = prevEncryptRef.current;
-    prevEncryptRef.current = settings.encryptHistory;
-    if (settings.encryptHistory && !prev) {
-      const start = performance.now();
-      const animate = (now: number) => {
-        const elapsed = now - start;
-        setEncryptAnimTick(elapsed);
-        if (elapsed < 600) {
-          encryptAnimRafRef.current = requestAnimationFrame(animate);
-        } else {
-          setEncryptAnimTick(9999);
-        }
-      };
-      encryptAnimRafRef.current = requestAnimationFrame(animate);
-    }
-    return () => {
-      if (encryptAnimRafRef.current) cancelAnimationFrame(encryptAnimRafRef.current);
-    };
-  }, [settings.encryptHistory]);
-
   useEffect(() => {
     if (open && scrollRef.current) {
       scrollRef.current.scrollTop = 0;
@@ -187,6 +168,44 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
 
   function openReleases() {
     window.open("https://github.com/zayan-builds/tempo-timer/releases/latest", "_blank");
+  }
+
+  function handleExport() {
+    if (solves.length === 0) return;
+    const json = exportSolves(solves);
+    const date = new Date().toISOString().slice(0, 10);
+    downloadJson(json, `tempo-history-${date}.json`);
+  }
+
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const { solves: parsed, errors } = parseImport(text);
+      if (parsed.length === 0) {
+        const msg = errors.length > 0 ? errors[0] : "no valid solves found";
+        setImportToast(msg);
+        setTimeout(() => setImportToast(null), 3000);
+        return;
+      }
+      const { imported, skipped } = await bulkImport(parsed);
+      const parts: string[] = [];
+      if (imported > 0) parts.push(`${imported} ${imported === 1 ? "solve" : "solves"} imported`);
+      if (skipped > 0) parts.push(`${skipped} skipped (already exist)`);
+      if (errors.length > 0) parts.push(`${errors.length} ${errors.length === 1 ? "entry" : "entries"} skipped (invalid)`);
+      setImportToast(parts.join(" · "));
+      setTimeout(() => setImportToast(null), 3000);
+    } catch {
+      setImportToast("could not read file");
+      setTimeout(() => setImportToast(null), 3000);
+    }
+    e.target.value = "";
+  }
+
+  function handleImportClick() {
+    void lightImpact();
+    fileInputRef.current?.click();
   }
 
   function showAuthToast() {
@@ -273,39 +292,26 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     trailingLabel={
                       <button
                         aria-label="what is pro mode"
-                        onClick={() => setProTip((v) => !v)}
+                        onClick={() => { void lightImpact(); setProTip((v) => !v); }}
                         style={{
                           width: 44,
                           height: 44,
                           background: "transparent",
                           border: "none",
                           cursor: "pointer",
+                          color: "#F5F0E8",
+                          opacity: proTip ? 0.7 : 0.35,
+                          fontSize: 14,
                           display: "inline-flex",
                           alignItems: "center",
                           justifyContent: "center",
                           touchAction: "manipulation",
                           padding: 0,
                           flexShrink: 0,
+                          transition: "opacity 0.2s ease",
                         }}
                       >
-                        <span
-                          className="font-mono"
-                          style={{
-                            width: 18,
-                            height: 18,
-                            borderRadius: "50%",
-                            border: `1px solid rgba(245,240,232,0.4)`,
-                            color: accentHex,
-                            fontSize: 10,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            flexShrink: 0,
-                            lineHeight: 1,
-                          }}
-                        >
-                          ?
-                        </span>
+                        ?
                       </button>
                     }
                   >
@@ -319,19 +325,35 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                       transition: "max-height 300ms ease, opacity 200ms ease",
                     }}
                   >
-                    <p
-                      className="font-mono"
-                      style={{
-                        color: "#F5F0E8",
-                        opacity: 0.55,
-                        fontSize: 11,
-                        lineHeight: 1.7,
-                        letterSpacing: "0.04em",
-                        paddingBottom: 18,
-                      }}
-                    >
-                      Pro Mode shows a scramble before each solve. A scramble is a sequence of moves that randomizes your cube so every solve starts from a fair position. It also tracks ao5 and ao12, your rolling average across your last 5 and 12 solves, showing consistent speed rather than just your best.
-                    </p>
+                    <div style={{ paddingBottom: 18 }}>
+                      <p
+                        className="font-mono"
+                        style={{
+                          color: "#F5F0E8",
+                          opacity: 0.6,
+                          fontSize: 11,
+                          lineHeight: 1.7,
+                          letterSpacing: "0.04em",
+                          margin: 0,
+                        }}
+                      >
+                        Shows a scramble before each solve — a sequence of moves to randomize your cube for a fair start.
+                      </p>
+                      <p
+                        className="font-mono"
+                        style={{
+                          color: "#F5F0E8",
+                          opacity: 0.45,
+                          fontSize: 10,
+                          lineHeight: 1.6,
+                          letterSpacing: "0.04em",
+                          marginTop: 12,
+                          marginBottom: 0,
+                        }}
+                      >
+                        Also tracks rolling averages (ao5, ao12) so you can measure consistency, not just your best.
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -365,7 +387,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     {HOLD_OPTIONS.map((opt) => (
                       <button
                         key={opt.value}
-                        onClick={() => update("holdMs", opt.value)}
+                        onClick={() => { void lightImpact(); update("holdMs", opt.value); }}
                         className="font-mono"
                         style={{
                           color: settings.holdMs === opt.value ? accentHex : "#F5F0E8",
@@ -411,7 +433,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     {ACCENT_ORDER.map((name) => (
                       <button
                         key={name}
-                        onClick={() => { if (!settings.dailyAccent) update("accent", name); }}
+                        onClick={() => { if (!settings.dailyAccent) { void lightImpact(); update("accent", name); } }}
                         aria-label={name}
                         style={{
                           width: 18,
@@ -435,7 +457,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                       change every day
                     </span>
                     <button
-                      onClick={() => update("dailyAccent", !settings.dailyAccent)}
+                      onClick={() => { void lightImpact(); update("dailyAccent", !settings.dailyAccent); }}
                       className="font-mono"
                       style={{
                         color: settings.dailyAccent ? accentHex : "#F5F0E8",
@@ -453,41 +475,19 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                   </div>
                   {settings.dailyAccent && (
                     <p className="font-mono" style={{ marginTop: 6, color: accentHex, opacity: 0.6, fontSize: 9, letterSpacing: "0.18em" }}>
-                      today: {getDailyAccent()}
+                      today: {getDailyAccentName()}
                     </p>
                   )}
                 </div>
 
-                <div style={{ borderBottom: HAIRLINE, paddingTop: 18, paddingBottom: 18 }}>
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono" style={{ fontSize: 13, letterSpacing: "0.16em", color: "#F5F0E8", opacity: 0.85 }}>
-                      {"ENCRYPT HISTORY".split("").map((char, i) => {
-                        const localStart = i * 15;
-                        const localResolve = localStart + 220;
-                        const tick = encryptAnimTick > 0 ? encryptAnimTick : animTick;
-                        const base = tick > 0 ? (encryptAnimTick > 0 ? 0 : 280 + 4 * 80) : 9999;
-                        const startAt = base + i * 15;
-                        const resolveAt = startAt + 220;
-                        if (tick < startAt) return <span key={i} style={{ opacity: 0 }}>{char}</span>;
-                        if (tick >= resolveAt) return <span key={i}>{char}</span>;
-                        const rand = SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
-                        return <span key={i} style={{ opacity: 0.75, color: accentHex }}>{rand}</span>;
-                      })}
-                    </span>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      {settings.encryptHistory && (
-                        <span className="font-mono" style={{ fontSize: 8, letterSpacing: "0.15em", color: accentHex, opacity: encryptAnimTick < 900 ? 0.8 : 0.5, transition: "opacity 0.3s ease" }}>
-                          {encryptAnimTick > 0 && encryptAnimTick < 900 ? "encrypting..." : "encrypted"}
-                        </span>
-                      )}
-                      <Toggle
-                        on={settings.encryptHistory}
-                        onChange={(v) => update("encryptHistory", v)}
-                        accentHex={accentHex}
-                      />
-                    </div>
-                  </div>
-                </div>
+                <Row
+                  label="ENCRYPT HISTORY"
+                  animTick={animTick}
+                  rowIndex={4}
+                  accentHex={accentHex}
+                >
+                  <Toggle on={settings.encryptHistory} onChange={(v) => update("encryptHistory", v)} accentHex={accentHex} />
+                </Row>
 
                 <div style={{ paddingTop: 20, paddingBottom: 20 }}>
                   <div className="flex items-center justify-between">
@@ -525,6 +525,46 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     </p>
                   )}
                 </div>
+              </div>
+
+              <div style={{ marginTop: 48, borderTop: HAIRLINE, paddingTop: 28 }}>
+                <p className="font-mono" style={{ color: accentHex, fontSize: 11, letterSpacing: "0.3em", marginBottom: 14 }}>
+                  data
+                </p>
+                <Row label="EXPORT HISTORY" rowIndex={6} animTick={animTick} accentHex={accentHex}>
+                  <button
+                    onClick={() => { void lightImpact(); handleExport(); }}
+                    className="font-mono"
+                    style={{
+                      color: accentHex, fontSize: 12, letterSpacing: "0.16em",
+                      background: "transparent", border: "none", cursor: "pointer",
+                      padding: 0, opacity: solves.length > 0 ? 1 : 0.25,
+                      pointerEvents: solves.length > 0 ? "auto" : "none",
+                    }}
+                  >
+                    export
+                  </button>
+                </Row>
+                <Row label="IMPORT HISTORY" rowIndex={7} animTick={animTick} accentHex={accentHex}>
+                  <button
+                    onClick={handleImportClick}
+                    className="font-mono"
+                    style={{
+                      color: "#F5F0E8", fontSize: 12, letterSpacing: "0.16em",
+                      background: "transparent", border: "none", cursor: "pointer",
+                      padding: 0, opacity: 0.4,
+                    }}
+                  >
+                    import
+                  </button>
+                </Row>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json"
+                  style={{ display: "none" }}
+                  onChange={handleFileSelected}
+                />
               </div>
 
               <p
@@ -676,12 +716,15 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
           fontSize: 10,
           letterSpacing: "0.3em",
           pointerEvents: "none",
-          opacity: authToast ? 1 : 0,
-          transform: authToast ? "translateY(0)" : "translateY(8px)",
+          opacity: authToast || importToast ? 1 : 0,
+          transform: authToast || importToast ? "translateY(0)" : "translateY(8px)",
           transition: "opacity 0.25s ease, transform 0.25s ease",
+          textAlign: "center",
+          paddingLeft: 24,
+          paddingRight: 24,
         }}
       >
-        {authToast}
+        {authToast || importToast}
       </div>
     </>
   );

@@ -233,14 +233,20 @@ function Row({ solve, isPB, onSwipeDelete, onShare, accentHex }: RowProps) {
           </span>
           <button
             aria-label="share"
-            onClick={(e) => { e.stopPropagation(); onShare(solve); }}
+            onClick={(e) => { e.stopPropagation(); void lightImpact(); onShare(solve); }}
+            className="group"
             style={{
               background: "transparent", border: "none", cursor: "pointer",
-              opacity: 0.4, padding: 4, display: "flex", alignItems: "center",
+              opacity: 0.45, padding: 4, display: "flex", alignItems: "center",
               touchAction: "manipulation",
+              transition: "opacity 0.2s ease, transform 0.2s ease",
             }}
+            onPointerEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.75"; (e.currentTarget as HTMLElement).style.transform = "scale(1.1)"; }}
+            onPointerLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.45"; (e.currentTarget as HTMLElement).style.transform = "scale(1)"; }}
+            onPointerDown={(e) => { (e.currentTarget as HTMLElement).style.transform = "scale(0.92)"; }}
+            onPointerUp={(e) => { (e.currentTarget as HTMLElement).style.transform = "scale(1.1)"; }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F5F0E8" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F5F0E8" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
               <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
               <polyline points="16 6 12 2 8 6" />
               <line x1="12" y1="2" x2="12" y2="15" />
