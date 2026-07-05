@@ -27,7 +27,7 @@ export const ShareCard = forwardRef<HTMLDivElement, Props>(function ShareCard(
         fontFamily: "'Cormorant Garamond', 'Times New Roman', serif",
       }}
     >
-      {/* Amber radial bloom centered behind the time */}
+      {/* Accent radial bloom centered behind the time */}
       <div
         aria-hidden
         style={{
@@ -37,14 +37,14 @@ export const ShareCard = forwardRef<HTMLDivElement, Props>(function ShareCard(
           width: 400,
           height: 400,
           transform: "translate(-50%, -50%)",
-          background: `radial-gradient(circle, ${accentHex} 0%, rgba(200,133,58,0.5) 35%, rgba(200,133,58,0) 70%)`,
+          background: `radial-gradient(circle, ${accentHex} 0%, ${accentHex}55 35%, transparent 70%)`,
           filter: "blur(60px)",
           opacity: 0.08,
           pointerEvents: "none",
         }}
       />
 
-      {/* Corner marks */}
+      {/* Corner marks - lowercase */}
       <div
         style={{
           position: "absolute",
@@ -57,7 +57,7 @@ export const ShareCard = forwardRef<HTMLDivElement, Props>(function ShareCard(
           opacity: 0.5,
         }}
       >
-        TEMPO
+        tempo
       </div>
       <div
         style={{
@@ -92,7 +92,7 @@ export const ShareCard = forwardRef<HTMLDivElement, Props>(function ShareCard(
           <>
             <div
               style={{
-                width: 120,
+                width: 100,
                 height: 1,
                 background: accentHex,
                 opacity: 0.4,
@@ -102,7 +102,7 @@ export const ShareCard = forwardRef<HTMLDivElement, Props>(function ShareCard(
             <div
               style={{
                 fontFamily: "'JetBrains Mono', monospace",
-                fontSize: 11,
+                fontSize: 10,
                 letterSpacing: "0.3em",
                 color: accentHex,
                 marginBottom: 28,
@@ -117,7 +117,7 @@ export const ShareCard = forwardRef<HTMLDivElement, Props>(function ShareCard(
             fontFamily: "'Cormorant Garamond', 'Times New Roman', serif",
             fontStyle: "italic",
             fontWeight: 400,
-            fontSize: 180,
+            fontSize: 170,
             color: "#F5F0E8",
             lineHeight: 1,
             fontVariantNumeric: "tabular-nums",
@@ -130,17 +130,20 @@ export const ShareCard = forwardRef<HTMLDivElement, Props>(function ShareCard(
           style={{
             fontFamily: "'JetBrains Mono', monospace",
             fontStyle: "italic",
-            fontSize: 13,
-            letterSpacing: "0.08em",
+            fontSize: 12,
+            letterSpacing: "0.06em",
             color: accentHex,
             marginTop: 32,
+            textAlign: "center",
+            lineHeight: 1.4,
+            maxWidth: 800,
           }}
         >
           {comparison}
         </div>
       </div>
 
-      {/* Bottom right tag */}
+      {/* Bottom right tag - lowercase */}
       <div
         style={{
           position: "absolute",
@@ -150,10 +153,10 @@ export const ShareCard = forwardRef<HTMLDivElement, Props>(function ShareCard(
           fontSize: 10,
           letterSpacing: "0.18em",
           color: "#F5F0E8",
-          opacity: 0.3,
+          opacity: 0.25,
         }}
       >
-        tempo · cube timer
+        tempo . cube timer
       </div>
 
       {/* Noise/grain overlay */}

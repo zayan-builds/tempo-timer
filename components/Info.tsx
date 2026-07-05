@@ -20,12 +20,13 @@ export function Info({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!open || !scrollRef.current) return;
-    scrollRef.current.scrollTop = 0;
-    const id = requestAnimationFrame(() => {
-      if (scrollRef.current) scrollRef.current.scrollTop = 0;
-    });
-    return () => cancelAnimationFrame(id);
+    if (!open) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = 0;
+    const raf = requestAnimationFrame(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; });
+    const timer = setTimeout(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; }, 280);
+    return () => { cancelAnimationFrame(raf); clearTimeout(timer); };
   }, [open]);
 
   return (

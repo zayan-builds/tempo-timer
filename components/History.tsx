@@ -207,12 +207,17 @@ function Row({ solve, isPB, onSwipeDelete, onShare, accentHex }: RowProps) {
           className="font-mono"
           style={{
             color: "#F5F0E8",
-            fontSize: "clamp(13px, 4vw, 1rem)",
+            fontSize: "clamp(12px, 3.5vw, 15px)",
             lineHeight: 1.1,
             fontVariantNumeric: "tabular-nums",
             letterSpacing: "0.04em",
             textAlign: "left",
             userSelect: "none",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            minWidth: 0,
+            flexShrink: 1,
           }}
         >
           {formatTime(solve.time_ms)}
@@ -489,6 +494,15 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
         const dataUrl = await mod.default.toPng(node, {
           width: 1200, height: 630, bgcolor: "#000000", cacheBust: true,
         });
+        const blob = await (await fetch(dataUrl)).blob();
+        const file = new File([blob], `tempo-${formatTime(solve.time_ms).replace(/[:.]/g, "-")}.png`, { type: "image/png" });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({ files: [file], title: "tempo", text: `${comparison}` });
+            setShareData(null);
+            return;
+          } catch { /* fall through to download */ }
+        }
         const a = document.createElement("a");
         a.href = dataUrl;
         a.download = `tempo-${formatTime(solve.time_ms).replace(/[:.]/g, "-")}.png`;

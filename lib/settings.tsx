@@ -14,7 +14,8 @@ export type AccentName =
   | "green"
   | "red"
   | "purple"
-  | "white";
+  | "white"
+  | "gold";
 
 export const ACCENT_HEX: Record<AccentName, string> = {
   amber: "#C8853A",
@@ -23,13 +24,29 @@ export const ACCENT_HEX: Record<AccentName, string> = {
   red: "#E53935",
   purple: "#9B59B6",
   white: "#F5F0E8",
+  gold: "#D4A543",
 };
+
+const DAILY_ACCENT_PALETTE: Record<number, AccentName> = {
+  0: "amber",
+  1: "blue",
+  2: "green",
+  3: "purple",
+  4: "red",
+  5: "gold",
+  6: "white",
+};
+
+export function getDailyAccent(): AccentName {
+  return DAILY_ACCENT_PALETTE[new Date().getDay()] ?? "amber";
+}
 
 export type Settings = {
   proMode: boolean;
   haptics: boolean;
   holdMs: 300 | 500 | 750;
   accent: AccentName;
+  dailyAccent: boolean;
   encryptHistory: boolean;
   lockHistory: boolean;
   lockMethod: "none" | "biometric" | "pin";
@@ -40,6 +57,7 @@ const DEFAULTS: Settings = {
   haptics: true,
   holdMs: 500,
   accent: "amber",
+  dailyAccent: false,
   encryptHistory: false,
   lockHistory: false,
   lockMethod: "none",
@@ -75,9 +93,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const effectiveAccent = settings.dailyAccent ? getDailyAccent() : settings.accent;
+
   const value = useMemo<Ctx>(
-    () => ({ settings, update, accentHex: ACCENT_HEX[settings.accent] }),
-    [settings, update],
+    () => ({ settings, update, accentHex: ACCENT_HEX[effectiveAccent] }),
+    [settings, update, effectiveAccent],
   );
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;

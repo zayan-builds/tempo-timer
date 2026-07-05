@@ -59,7 +59,6 @@ export function TimerScreen() {
   const swipeTriggeredRef = useRef(false);
   const newSessionPlayedRef = useRef(false);
   const comparisonShowRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const comparisonHideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typewriterTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const closeTopOverlayRef = useRef<() => void>(() => {});
 
@@ -67,10 +66,6 @@ export function TimerScreen() {
     if (comparisonShowRef.current) {
       clearTimeout(comparisonShowRef.current);
       comparisonShowRef.current = null;
-    }
-    if (comparisonHideRef.current) {
-      clearTimeout(comparisonHideRef.current);
-      comparisonHideRef.current = null;
     }
     typewriterTimersRef.current.forEach(clearTimeout);
     typewriterTimersRef.current = [];
@@ -90,11 +85,7 @@ export function TimerScreen() {
           const t = setTimeout(() => setTypedText(text.slice(0, i)), i * 28);
           typewriterTimersRef.current.push(t);
         }
-        const total = text.length * 28 + 2500;
-        comparisonHideRef.current = setTimeout(() => {
-          setComparisonFull(null);
-          setTypedText("");
-        }, total);
+        // comparison stays visible until next solve (cleared on armHold)
       }, showDelay);
     },
     [clearComparisonTimers],

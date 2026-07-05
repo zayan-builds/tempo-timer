@@ -2,6 +2,7 @@ const REPO = "zayan-builds/tempo-timer";
 const RELEASES_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
 const ASSET_NAME = "dist.zip";
 const PREF_VERSION_KEY = "tempo.installedVersion";
+const BUNDLED_VERSION = stripV(process.env.NEXT_PUBLIC_APP_VERSION || "0.1.14");
 
 type GitHubAsset = { name: string; browser_download_url: string };
 type GitHubRelease = { tag_name?: string; assets?: GitHubAsset[] };
@@ -31,7 +32,7 @@ function setStatus(patch: Partial<UpdaterStatus>) {
   if (listener) listener(lastStatus);
 }
 
-function stripV(s: string): string {
+export function stripV(s: string): string {
   return s.replace(/^v/i, "").trim();
 }
 
@@ -44,7 +45,7 @@ function parseVersion(v: string): number[] {
     });
 }
 
-function compareVersions(a: string, b: string): "same" | "newer" | "older" {
+export function compareVersions(a: string, b: string): "same" | "newer" | "older" {
   const pa = parseVersion(a);
   const pb = parseVersion(b);
   const len = Math.max(pa.length, pb.length);
@@ -74,6 +75,15 @@ async function setStoredVersion(version: string) {
     await Preferences.set({ key: PREF_VERSION_KEY, value: stripV(version) });
   } catch (e) {
     console.log("[updater] preferences set failed", e);
+  }
+}
+
+export async function clearStoredUpdaterVersion() {
+  try {
+    const { Preferences } = await import("@capacitor/preferences");
+    await Preferences.remove({ key: PREF_VERSION_KEY });
+  } catch (e) {
+    console.log("[updater] preferences remove failed", e);
   }
 }
 

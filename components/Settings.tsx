@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { ACCENT_HEX, AccentName, useSettings } from "@/lib/settings";
+import { ACCENT_HEX, AccentName, getDailyAccent, useSettings } from "@/lib/settings";
 import {
   clearAuth,
   isBiometricAvailable,
@@ -12,8 +12,18 @@ import { sounds, unlockAudio } from "@/lib/sound";
 import { PinPad } from "./PinPad";
 
 const ACCENT_ORDER: AccentName[] = [
-  "amber", "blue", "green", "red", "purple", "white",
+  "amber", "blue", "green", "red", "purple", "white", "gold",
 ];
+
+const ACCENT_LABELS: Record<string, string> = {
+  amber: "amber",
+  blue: "blue",
+  green: "green",
+  red: "red",
+  purple: "purple",
+  white: "white",
+  gold: "gold",
+};
 const HOLD_OPTIONS: Array<{ value: 300 | 500 | 750; label: string }> = [
   { value: 300, label: "0.3s" },
   { value: 500, label: "0.5s" },
@@ -113,6 +123,30 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
   const [animTick, setAnimTick] = useState(0);
   const animStartRef = useRef<number | null>(null);
   const animRafRef = useRef<number | null>(null);
+  const [encryptAnimTick, setEncryptAnimTick] = useState(0);
+  const encryptAnimRafRef = useRef<number | null>(null);
+  const prevEncryptRef = useRef(settings.encryptHistory);
+
+  useEffect(() => {
+    const prev = prevEncryptRef.current;
+    prevEncryptRef.current = settings.encryptHistory;
+    if (settings.encryptHistory && !prev) {
+      const start = performance.now();
+      const animate = (now: number) => {
+        const elapsed = now - start;
+        setEncryptAnimTick(elapsed);
+        if (elapsed < 600) {
+          encryptAnimRafRef.current = requestAnimationFrame(animate);
+        } else {
+          setEncryptAnimTick(9999);
+        }
+      };
+      encryptAnimRafRef.current = requestAnimationFrame(animate);
+    }
+    return () => {
+      if (encryptAnimRafRef.current) cancelAnimationFrame(encryptAnimRafRef.current);
+    };
+  }, [settings.encryptHistory]);
 
   useEffect(() => {
     if (open && scrollRef.current) {
@@ -377,18 +411,18 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     {ACCENT_ORDER.map((name) => (
                       <button
                         key={name}
-                        onClick={() => update("accent", name)}
+                        onClick={() => { if (!settings.dailyAccent) update("accent", name); }}
                         aria-label={name}
                         style={{
                           width: 18,
                           height: 18,
                           borderRadius: "50%",
                           background: ACCENT_HEX[name],
-                          opacity: settings.accent === name ? 1 : 0.4,
+                          opacity: settings.dailyAccent ? 0.15 : (settings.accent === name ? 1 : 0.4),
                           transform: settings.accent === name ? "scale(1.18)" : "scale(1)",
                           transition: "opacity 200ms ease, transform 200ms ease",
                           border: settings.accent === name ? "1px solid rgba(245,240,232,0.4)" : "none",
-                          cursor: "pointer",
+                          cursor: settings.dailyAccent ? "default" : "pointer",
                           padding: 0,
                           flexShrink: 0,
                           touchAction: "manipulation",
@@ -396,15 +430,64 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                       />
                     ))}
                   </div>
+                  <div style={{ marginTop: 14, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span className="font-mono" style={{ fontSize: 9, letterSpacing: "0.2em", color: "#F5F0E8", opacity: 0.5 }}>
+                      change every day
+                    </span>
+                    <button
+                      onClick={() => update("dailyAccent", !settings.dailyAccent)}
+                      className="font-mono"
+                      style={{
+                        color: settings.dailyAccent ? accentHex : "#F5F0E8",
+                        opacity: settings.dailyAccent ? 1 : 0.4,
+                        fontSize: 12,
+                        letterSpacing: "0.3em",
+                        background: "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      {settings.dailyAccent ? "on" : "off"}
+                    </button>
+                  </div>
+                  {settings.dailyAccent && (
+                    <p className="font-mono" style={{ marginTop: 6, color: accentHex, opacity: 0.6, fontSize: 9, letterSpacing: "0.18em" }}>
+                      today: {getDailyAccent()}
+                    </p>
+                  )}
                 </div>
 
-                <Row label="ENCRYPT HISTORY" animTick={animTick} rowIndex={4} accentHex={accentHex}>
-                  <Toggle
-                    on={settings.encryptHistory}
-                    onChange={(v) => update("encryptHistory", v)}
-                    accentHex={accentHex}
-                  />
-                </Row>
+                <div style={{ borderBottom: HAIRLINE, paddingTop: 18, paddingBottom: 18 }}>
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono" style={{ fontSize: 13, letterSpacing: "0.16em", color: "#F5F0E8", opacity: 0.85 }}>
+                      {"ENCRYPT HISTORY".split("").map((char, i) => {
+                        const localStart = i * 15;
+                        const localResolve = localStart + 220;
+                        const tick = encryptAnimTick > 0 ? encryptAnimTick : animTick;
+                        const base = tick > 0 ? (encryptAnimTick > 0 ? 0 : 280 + 4 * 80) : 9999;
+                        const startAt = base + i * 15;
+                        const resolveAt = startAt + 220;
+                        if (tick < startAt) return <span key={i} style={{ opacity: 0 }}>{char}</span>;
+                        if (tick >= resolveAt) return <span key={i}>{char}</span>;
+                        const rand = SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
+                        return <span key={i} style={{ opacity: 0.75, color: accentHex }}>{rand}</span>;
+                      })}
+                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {settings.encryptHistory && (
+                        <span className="font-mono" style={{ fontSize: 8, letterSpacing: "0.15em", color: accentHex, opacity: encryptAnimTick < 900 ? 0.8 : 0.5, transition: "opacity 0.3s ease" }}>
+                          {encryptAnimTick > 0 && encryptAnimTick < 900 ? "encrypting..." : "encrypted"}
+                        </span>
+                      )}
+                      <Toggle
+                        on={settings.encryptHistory}
+                        onChange={(v) => update("encryptHistory", v)}
+                        accentHex={accentHex}
+                      />
+                    </div>
+                  </div>
+                </div>
 
                 <div style={{ paddingTop: 20, paddingBottom: 20 }}>
                   <div className="flex items-center justify-between">
@@ -503,7 +586,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     letterSpacing: "0.18em",
                   }}
                 >
-                  v{process.env.NEXT_PUBLIC_APP_VERSION || "0.1.13"}
+                  v{process.env.NEXT_PUBLIC_APP_VERSION || "0.1.14"}
                 </p>
               </div>
 
