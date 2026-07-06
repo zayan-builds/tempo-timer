@@ -25,7 +25,7 @@ const config: CapacitorConfig = {
       resetWhenUpdate: true,
       autoDeleteFailed: true,
       autoDeletePrevious: true,
-      version: '0.1.15'
+      version: '0.1.16'
     }
   }
 };

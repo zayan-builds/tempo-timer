@@ -23,7 +23,7 @@ export function Bloom({ state, accentHex }: Props) {
   const c = config[state];
   const size = c.radius * 2;
   const { r, g, b } = hexToRgb(accentHex);
-  const pulsing = state === "armed" || state === "running";
+  const pulsing = state === "armed";
 
   return (
     <div

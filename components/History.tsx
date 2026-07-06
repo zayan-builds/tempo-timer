@@ -443,6 +443,15 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
     [validSolves],
   );
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      const el = scrollRef.current;
+      if (el) { el.scrollTop = 0; }
+    }
+  }, [open]);
+
   const [confirmClear, setConfirmClear] = useState(false);
   const [shareData, setShareData] = useState<{ solve: Solve; isPB: boolean; comparison: string } | null>(null);
   const [undoState, setUndoState] = useState<{ solve: Solve } | null>(null);
@@ -674,6 +683,7 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
 
       {/* Scroll list */}
       <div
+        ref={scrollRef}
         style={{
           flex: 1,
           overflowY: "auto",

@@ -60,7 +60,18 @@ export function parseImport(raw: string): ImportResult {
   return { solves, errors };
 }
 
-export function downloadJson(json: string, filename = `tempo-history.json`): void {
+export async function downloadJson(json: string, filename = `tempo-history.json`): Promise<void> {
+  try {
+    const { Filesystem, Directory } = await import("@capacitor/filesystem");
+    await Filesystem.writeFile({
+      path: filename,
+      data: json,
+      directory: Directory.Documents,
+    });
+    return;
+  } catch {
+    // Capacitor Filesystem unavailable — fallback to web download
+  }
   const blob = new Blob([json], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

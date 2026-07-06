@@ -71,7 +71,7 @@ export function Info({
 
             <p style={{ ...SECTION_LABEL_STYLE, color: accentHex }}>settings explained</p>
             <p style={{ marginBottom: 14, opacity: 0.85 }}>
-              <span style={{ color: accentHex }}>Pro Mode</span> — turns on scramble notation at the top (instructions for how to mix up your cube before each solve) and shows your rolling averages. For serious cubers only.
+              <span style={{ color: accentHex }}>Pro Mode</span> — turns on scramble notation at the top, instructions for how to mix up your cube before each solve, and shows your rolling averages. For serious cubers only.
             </p>
             <p style={{ marginBottom: 14, opacity: 0.85 }}>
               <span style={{ color: accentHex }}>Haptics</span> — subtle vibration feedback when you start and stop. Recommended on.

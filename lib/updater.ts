@@ -2,7 +2,7 @@ const REPO = "zayan-builds/tempo-timer";
 const RELEASES_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
 const ASSET_NAME = "dist.zip";
 const PREF_VERSION_KEY = "tempo.installedVersion";
-const BUNDLED_VERSION = stripV(process.env.NEXT_PUBLIC_APP_VERSION || "0.1.14");
+const BUNDLED_VERSION = stripV(process.env.NEXT_PUBLIC_APP_VERSION || "0.1.16");
 
 type GitHubAsset = { name: string; browser_download_url: string };
 type GitHubRelease = { tag_name?: string; assets?: GitHubAsset[] };

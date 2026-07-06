@@ -11,7 +11,7 @@ import {
   verifyBiometric,
 } from "@/lib/auth";
 import { sounds, unlockAudio } from "@/lib/sound";
-import { lightImpact } from "@/lib/haptics";
+import { gentleImpact } from "@/lib/haptics";
 import { PinPad } from "./PinPad";
 
 const ACCENT_ORDER: AccentName[] = [
@@ -89,7 +89,7 @@ function Row({
 function Toggle({ on, onChange, accentHex }: { on: boolean; onChange: (v: boolean) => void; accentHex: string }) {
   return (
     <button
-      onClick={() => { void lightImpact(); onChange(!on); }}
+      onClick={() => { void gentleImpact(); onChange(!on); }}
       className="font-mono"
       style={{
         color: on ? accentHex : "#F5F0E8",
@@ -170,11 +170,11 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
     window.open("https://github.com/zayan-builds/tempo-timer/releases/latest", "_blank");
   }
 
-  function handleExport() {
+  async function handleExport() {
     if (solves.length === 0) return;
     const json = exportSolves(solves);
     const date = new Date().toISOString().slice(0, 10);
-    downloadJson(json, `tempo-history-${date}.json`);
+    await downloadJson(json, `tempo-history-${date}.json`);
   }
 
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
@@ -204,7 +204,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
   }
 
   function handleImportClick() {
-    void lightImpact();
+    void gentleImpact();
     fileInputRef.current?.click();
   }
 
@@ -292,7 +292,8 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     trailingLabel={
                       <button
                         aria-label="what is pro mode"
-                        onClick={() => { void lightImpact(); setProTip((v) => !v); }}
+                        onClick={() => { void gentleImpact(); setProTip((v) => !v); }}
+                        className="font-mono"
                         style={{
                           width: 44,
                           height: 44,
@@ -387,7 +388,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     {HOLD_OPTIONS.map((opt) => (
                       <button
                         key={opt.value}
-                        onClick={() => { void lightImpact(); update("holdMs", opt.value); }}
+                        onClick={() => { void gentleImpact(); update("holdMs", opt.value); }}
                         className="font-mono"
                         style={{
                           color: settings.holdMs === opt.value ? accentHex : "#F5F0E8",
@@ -433,7 +434,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     {ACCENT_ORDER.map((name) => (
                       <button
                         key={name}
-                        onClick={() => { if (!settings.dailyAccent) { void lightImpact(); update("accent", name); } }}
+                        onClick={() => { if (!settings.dailyAccent) { void gentleImpact(); update("accent", name); } }}
                         aria-label={name}
                         style={{
                           width: 18,
@@ -457,7 +458,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                       change every day
                     </span>
                     <button
-                      onClick={() => { void lightImpact(); update("dailyAccent", !settings.dailyAccent); }}
+                      onClick={() => { void gentleImpact(); update("dailyAccent", !settings.dailyAccent); }}
                       className="font-mono"
                       style={{
                         color: settings.dailyAccent ? accentHex : "#F5F0E8",
@@ -533,7 +534,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                 </p>
                 <Row label="EXPORT HISTORY" rowIndex={6} animTick={animTick} accentHex={accentHex}>
                   <button
-                    onClick={() => { void lightImpact(); handleExport(); }}
+                    onClick={() => { void gentleImpact(); handleExport(); }}
                     className="font-mono"
                     style={{
                       color: accentHex, fontSize: 12, letterSpacing: "0.16em",
@@ -626,7 +627,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     letterSpacing: "0.18em",
                   }}
                 >
-                  v{process.env.NEXT_PUBLIC_APP_VERSION || "0.1.14"}
+                  v{process.env.NEXT_PUBLIC_APP_VERSION || "0.1.16"}
                 </p>
               </div>
 
