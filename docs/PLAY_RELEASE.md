@@ -1,13 +1,13 @@
-# Play Console Release Guide — Tempo v0.1.19
+# Play Console Release Guide — Tempo v0.1.20
 
-Everything needed to push `com.zayan.tempo` (versionCode 20) to Google Play.
+Everything needed to push `com.zayan.tempo` (versionCode 21) to Google Play.
 
 ## 1. Upload artifact
 
 | File | Path |
 |---|---|
-| AAB (upload to Play) | `tempo-v0.1.19.aab` |
-| Signed APK (sideload/test) | `tempo-v0.1.19.apk` |
+| AAB (upload to Play) | `tempo-v0.1.20.aab` |
+| Signed APK (sideload/test) | `tempo-v0.1.20.apk` |
 
 Both are signed with the release keystore (`android/app/tempo-keystore`, cert CN=Syed Zayan,
 SHA-256 `506a4ae5fb3206be2aaef44fcd868c1fa6491f894321d7a9ead1bd414ec304d4`). To regenerate:
@@ -22,7 +22,7 @@ $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
 
 - **App name:** Tempo
 - **Package name:** `com.zayan.tempo`
-- **Version:** 0.1.19 (versionCode 20)
+- **Version:** 0.1.20 (versionCode 21)
 - **minSdk:** 24 (Android 7.0) — covers ~95%+ of active devices
 - **targetSdk / compileSdk:** 36
 
@@ -62,7 +62,7 @@ except possibly "sharing location" — answer no.
 
 ## 6. Target audience & store listing
 
-- **Category:** Puzzle (or Productivity → Timer). A speed-cube timer fits "Puzzle".
+- **Category:** Tools (as configured in the Play Console). A speed-cube timer also fits "Puzzle" / "Productivity → Timer" if you ever want to switch.
 - **Target audience:** All ages. Do **not** enable "designed for families / kids" unless you
   want COPPA compliance — keep it as a general audience app.
 - Suggest adding: privacy policy (see §8), screenshots (4+), a feature graphic (1024x500),
@@ -72,10 +72,10 @@ except possibly "sharing location" — answer no.
 
 1. Play Console → your app → **Production** → **Create new release** (or **Test tracks** first
    for a staged rollout — closed testing with internal testers is recommended for the first release).
-2. Upload `tempo-v0.1.19.aab`.
+2. Upload `tempo-v0.1.20.aab`.
 3. Release notes (English) — see `RELEASE_NOTES.md`.
 4. Save → review. The versionCode must be **higher** than any previous internal/closed/beta
-   build (20 is the current max).
+   build (21 is the current max).
 5. Roll out to a small percentage first (staged rollout) if uncertain.
 
 > ⚠️ Play Console **App signing**: the first uploaded AAB's upload key registers Play App
@@ -129,7 +129,7 @@ Tempo is **policy-clean for submission** except the Play Console forms themselve
 - **Icon:** The launcher icon must not use transparency outside the safe zone. Our adaptive
   foreground keeps the cube 100% inside the safe circle (verified), and `playstore-icon-512.png`
   is opaque. Play Protect may show a stale icon on old installs — uninstall before testing.
-- **Version code:** never lower than a previously uploaded code (use 20+, not 19).
+- **Version code:** never lower than a previously uploaded code (use 21+, not 20).
 - **Target SDK:** 36 is required for new updates — already set.
 - **Permissions:** don't claim the storage permission in the listing; it's maxSdk 28 only.
 

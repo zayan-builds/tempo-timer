@@ -2,17 +2,21 @@ const sharp = require("sharp");
 const path = require("path");
 const fs = require("fs");
 
-// v0.1.19: the crown — pixelated cube on a black squircle, background removed.
-const LOGO = path.resolve(__dirname, "..", "tempo NEW logo.png");
+// The crown: pixelated cube, background removed, single shape on pure black.
+// Source logo-cube.png is the bright cube extracted from the original design
+// (the old squircle was rgb(44,44,44), NOT pure black, which caused a visible
+// inner rounded frame / "double squircle" on every generated icon). Every
+// surface below is a single gray cube on pure black; the OS / Play mask is the
+// only rounding anywhere.
+const LOGO = path.resolve(__dirname, "..", "logo-cube.png");
 const RES = path.resolve(__dirname, "..", "android", "app", "src", "main", "res");
 const PUBLIC = path.resolve(__dirname, "..", "public");
 
 // Adaptive icon: 108dp viewport, 66dp safe-zone circle = 61.1% of canvas.
-// The cube is WIDE (aspect ~1.30) and spans ~99% of the squircle width, so the
-// cube's WIDTH is the binding constraint. frac 0.55 => cube width ~54% of the
-// canvas, safely inside the 61.1% mask circle.
+// The cube is WIDE (aspect ~1.30) and is the binding constraint.
+// frac 0.55 => cube width ~54% of the canvas, safely inside the 61.1% mask circle.
 const APP_ICON_FRAC = 0.55; // adaptive foreground + legacy launcher (masked)
-const FULLBLEED_FRAC = 0.72; // play store + web (displayed full-bleed, no mask)
+const FULLBLEED_FRAC = 0.78; // play store + web (displayed full-bleed, no mask)
 
 const mipmaps = [
   { dir: "mipmap-mdpi", size: 48 },
@@ -28,8 +32,8 @@ async function extractArtwork() {
   const { data, info } = await sharp(LOGO).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const W = info.width, H = info.height;
 
-  // Trim to the opaque bounding box (squircle + cube). The logo already has a
-  // fully transparent background, so we just drop the empty margin.
+  // Trim to the opaque bounding box. The logo already has a fully transparent
+  // background, so we just drop the empty margin.
   let minX = W, minY = H, maxX = 0, maxY = 0;
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
@@ -109,9 +113,9 @@ async function main() {
   console.log(`Source logo: ${logoMeta.width}x${logoMeta.height} alpha=${logoMeta.hasAlpha}`);
 
   const { data: artPng, info: artInfo } = await extractArtwork();
-  console.log(`Trimmed artwork: ${artInfo.width}x${artInfo.height} (aspect ${(artInfo.width / artInfo.height).toFixed(3)})`);
+  console.log(`Artwork: ${artInfo.width}x${artInfo.height} (aspect ${(artInfo.width / artInfo.height).toFixed(3)})`);
 
-  // ── Adaptive foregrounds (transparent, black squircle floats on black) ──
+  // ── Adaptive foregrounds (transparent, cube floats on black) ──
   console.log("\nGenerating adaptive foregrounds...");
   for (const m of mipmaps) {
     const out = path.join(RES, m.dir, "ic_launcher_foreground.png");

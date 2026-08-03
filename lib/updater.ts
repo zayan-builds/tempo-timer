@@ -3,7 +3,7 @@ const RELEASES_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
 const ASSET_NAME = "dist.zip";
 const SHA_ASSET_NAME = "dist.zip.sha256";
 const PREF_VERSION_KEY = "tempo.installedVersion";
-const BUNDLED_VERSION = stripV(process.env.NEXT_PUBLIC_APP_VERSION || "0.1.19");
+const BUNDLED_VERSION = stripV(process.env.NEXT_PUBLIC_APP_VERSION || "0.1.20");
 
 const VERSION_RE = /^\d+\.\d+\.\d+$/;
 const MAX_FETCH_RETRIES = 3;
