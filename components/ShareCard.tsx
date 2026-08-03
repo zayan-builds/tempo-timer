@@ -27,19 +27,19 @@ export const ShareCard = forwardRef<HTMLDivElement, Props>(function ShareCard(
         fontFamily: "'Cormorant Garamond', 'Times New Roman', serif",
       }}
     >
-      {/* Accent radial bloom centered behind the time */}
+      {/* Accent radial bloom centered behind the time — layered gradient (no CSS
+          filter blur, which dom-to-image-more renders inconsistently) */}
       <div
         aria-hidden
         style={{
           position: "absolute",
           left: "50%",
           top: "45%",
-          width: 400,
-          height: 400,
+          width: 720,
+          height: 720,
           transform: "translate(-50%, -50%)",
-          background: `radial-gradient(circle, ${accentHex} 0%, ${accentHex}55 35%, transparent 70%)`,
-          filter: "blur(60px)",
-          opacity: 0.08,
+          background: `radial-gradient(circle, ${accentHex} 0%, ${accentHex}66 28%, ${accentHex}22 50%, transparent 72%)`,
+          opacity: 0.22,
           pointerEvents: "none",
         }}
       />

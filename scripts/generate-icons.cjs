@@ -28,9 +28,31 @@ const mipmaps = [
 
 const BLACK_BG = { r: 0, g: 0, b: 0, a: 255 };
 
+// The cube's darker side faces are luma ~56–136 — nearly invisible against the
+// pure-black canvas, so the icon reads as a lone bright slab instead of a 3D
+// cube. Remap the opaque cube pixels' luma [56..248] → [136..250] so every
+// face is legible while the pixel-art edges stay crisp.
+function liftCube(data, W, H) {
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4;
+      if (data[i + 3] < 200) continue;
+      const l = (data[i] + data[i + 1] + data[i + 2]) / 3;
+      if (l < 56) continue;
+      const lp = 136 + ((l - 56) * (250 - 136)) / (248 - 56);
+      const f = lp / l;
+      data[i] = Math.min(255, Math.round(data[i] * f));
+      data[i + 1] = Math.min(255, Math.round(data[i + 1] * f));
+      data[i + 2] = Math.min(255, Math.round(data[i + 2] * f));
+    }
+  }
+}
+
 async function extractArtwork() {
   const { data, info } = await sharp(LOGO).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const W = info.width, H = info.height;
+
+  liftCube(data, W, H);
 
   // Trim to the opaque bounding box. The logo already has a fully transparent
   // background, so we just drop the empty margin.

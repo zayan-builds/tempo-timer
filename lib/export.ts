@@ -19,7 +19,7 @@ export function parseImport(raw: string): ImportResult {
   // Strip it plus any surrounding whitespace before parsing.
   const text = (raw || "").replace(/^\uFEFF/, "").trim();
   if (!text) {
-    return { solves: [], errors: ["file is empty"] };
+    return { solves: [], errors: ["the file is empty — try exporting from tempo again"] };
   }
 
   let data: unknown;
@@ -30,14 +30,14 @@ export function parseImport(raw: string): ImportResult {
   }
 
   if (!data || typeof data !== "object") {
-    return { solves: [], errors: ["file does not contain tempo data"] };
+    return { solves: [], errors: ["this file doesn't contain tempo history"] };
   }
 
   const obj = data as Record<string, unknown>;
   const list = Array.isArray(obj.solves) ? obj.solves : Array.isArray(data) ? data : [];
 
   if (!Array.isArray(list) || list.length === 0) {
-    return { solves: [], errors: ["no solves found in file"] };
+    return { solves: [], errors: ["no solves found in this file"] };
   }
 
   const solves: Solve[] = [];

@@ -66,8 +66,11 @@ type RowProps = {
   accentHex: string;
 };
 
-const SWIPE_COMMIT = 80;
+const SWIPE_COMMIT = 92; // fully-revealed delete action width
+const SNAP_OPEN = 56; // past this, release springs open to the delete button
 const UNDO_WINDOW_MS = 5000;
+const SPRING = "cubic-bezier(0.34, 1.56, 0.64, 1)"; // overshoot + settle
+const SETTLE = "cubic-bezier(0.32, 0.72, 0, 1)";
 
 function Row({ solve, isPB, onSwipeDelete, onShare, accentHex }: RowProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -78,13 +81,25 @@ function Row({ solve, isPB, onSwipeDelete, onShare, accentHex }: RowProps) {
   const deltaXRef = useRef(0);
   const swipingRef = useRef(false);
   const lockedAxisRef = useRef<"x" | "y" | null>(null);
+  const openRef = useRef(false);
+  const [, forceTick] = useState(0);
 
-  function setStrip(delta: number) {
+  function applyStrip(width: number) {
     const strip = stripRef.current;
     if (!strip) return;
-    const clamped = Math.min(delta, SWIPE_COMMIT);
-    strip.style.width = `${clamped}px`;
-    strip.style.opacity = String(clamped / SWIPE_COMMIT);
+    strip.style.width = `${width}px`;
+    strip.style.opacity = String(width / SWIPE_COMMIT);
+  }
+
+  function setOpen(v: boolean, animate: boolean) {
+    openRef.current = v;
+    const el = innerRef.current;
+    if (el) {
+      el.style.transition = animate ? `transform 260ms ${SPRING}` : "none";
+      el.style.transform = v ? `translateX(-${SWIPE_COMMIT}px)` : "translateX(0)";
+    }
+    applyStrip(v ? SWIPE_COMMIT : 0);
+    forceTick((t) => t + 1);
   }
 
   function onPointerDown(e: React.PointerEvent) {
@@ -114,14 +129,15 @@ function Row({ solve, isPB, onSwipeDelete, onShare, accentHex }: RowProps) {
     }
 
     swipingRef.current = true;
-    const clamped = Math.max(0, dx);
-    deltaXRef.current = clamped;
+    const base = openRef.current ? SWIPE_COMMIT : 0;
+    const delta = Math.max(0, base + dx);
+    deltaXRef.current = delta;
 
     const el = innerRef.current;
     if (!el) return;
     el.style.transition = "none";
-    el.style.transform = `translateX(-${Math.min(clamped, SWIPE_COMMIT)}px)`;
-    setStrip(clamped);
+    el.style.transform = `translateX(-${Math.min(delta, SWIPE_COMMIT)}px)`;
+    applyStrip(Math.min(delta, SWIPE_COMMIT));
   }
 
   function onPointerUp() {
@@ -134,10 +150,10 @@ function Row({ solve, isPB, onSwipeDelete, onShare, accentHex }: RowProps) {
     if (!el) return;
 
     if (delta >= SWIPE_COMMIT) {
-      // Commit: fly off left, then collapse height
-      el.style.transition = "transform 250ms ease-in";
-      el.style.transform = `translateX(-100vw)`;
-      setStrip(SWIPE_COMMIT);
+      // Full swipe past the action: fly off left, then collapse height
+      el.style.transition = "transform 260ms ease-in";
+      el.style.transform = "translateX(-100vw)";
+      applyStrip(SWIPE_COMMIT);
       setTimeout(() => {
         const wrap = wrapRef.current;
         if (wrap) {
@@ -146,18 +162,27 @@ function Row({ solve, isPB, onSwipeDelete, onShare, accentHex }: RowProps) {
           wrap.style.opacity = "0";
         }
         setTimeout(() => onSwipeDelete(solve.id), 200);
-      }, 250);
+      }, 260);
+    } else if (delta >= SNAP_OPEN) {
+      // Springs open to the delete action and stays, so the button can be tapped
+      setOpen(true, true);
     } else {
-      // Spring back
-      el.style.transition = "transform 200ms cubic-bezier(0.32, 0.72, 0, 1)";
-      el.style.transform = "translateX(0)";
-      const strip = stripRef.current;
-      if (strip) {
-        strip.style.transition = "width 200ms cubic-bezier(0.32,0.72,0,1), opacity 200ms ease";
-        strip.style.width = "0px";
-        strip.style.opacity = "0";
-      }
+      setOpen(false, true);
     }
+  }
+
+  function handleDeleteTap() {
+    const el = innerRef.current;
+    if (el) el.style.transform = "translateX(-100vw)";
+    setTimeout(() => {
+      const wrap = wrapRef.current;
+      if (wrap) {
+        wrap.style.transition = "max-height 200ms ease, opacity 200ms ease";
+        wrap.style.maxHeight = "0px";
+        wrap.style.opacity = "0";
+      }
+      setTimeout(() => onSwipeDelete(solve.id), 200);
+    }, 160);
   }
 
   return (
@@ -170,7 +195,7 @@ function Row({ solve, isPB, onSwipeDelete, onShare, accentHex }: RowProps) {
         position: "relative",
       }}
     >
-      {/* Red delete strip on right edge */}
+      {/* Red delete action revealed on swipe */}
       <div
         ref={stripRef}
         style={{
@@ -180,10 +205,42 @@ function Row({ solve, isPB, onSwipeDelete, onShare, accentHex }: RowProps) {
           bottom: 0,
           width: 0,
           opacity: 0,
-          background: "#C0392B",
-          pointerEvents: "none",
+          overflow: "hidden",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
         }}
-      />
+      >
+        <button
+          aria-label="delete this solve"
+          title="delete"
+          onClick={(e) => { e.stopPropagation(); void lightImpact(); handleDeleteTap(); }}
+          style={{
+            width: SWIPE_COMMIT,
+            height: "100%",
+            background: DELETE_RED,
+            border: "none",
+            cursor: "pointer",
+            pointerEvents: openRef.current ? "auto" : "none",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 7,
+            color: "#FFFFFF",
+            touchAction: "manipulation",
+          }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            <line x1="10" y1="11" x2="10" y2="17" />
+            <line x1="14" y1="11" x2="14" y2="17" />
+          </svg>
+          <span className="font-mono" style={{ fontSize: 10, letterSpacing: "0.22em", whiteSpace: "nowrap" }}>
+            delete
+          </span>
+        </button>
+      </div>
       <div
         ref={innerRef}
         className="flex items-center justify-between"
@@ -532,7 +589,15 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
         });
         const blob = await (await fetch(dataUrl)).blob();
         const file = new File([blob], `tempo-${formatTime(solve.time_ms).replace(/[:.]/g, "-")}.png`, { type: "image/png" });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        // navigator.canShare throws TypeError on WebViews that lack file sharing —
+        // guard it so we always fall through to the download path.
+        let canShare = false;
+        try {
+          canShare = !!navigator.canShare && !!navigator.share && navigator.canShare({ files: [file] });
+        } catch {
+          canShare = false;
+        }
+        if (canShare) {
           try {
             await navigator.share({ files: [file], title: "tempo", text: `${comparison}` });
             setShareData(null);

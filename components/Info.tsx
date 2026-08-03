@@ -97,7 +97,7 @@ export function Info({
               <span style={{ color: accentHex }}>Import</span> — select a previously exported JSON file to restore solves. Duplicates (same solve ID) are skipped automatically.
             </p>
             <p style={{ marginBottom: 8, opacity: 0.85 }}>
-              <span style={{ color: accentHex }}>Daily Accent</span> — when enabled, the accent color changes each day to a unique curated color (terracotta, steel blue, sage, lavender, rose, antique gold, cream). These are separate from the manual accent picker.
+              <span style={{ color: accentHex }}>Daily Accent</span> — when enabled, the accent color changes each day to a unique curated color, tuned to stay muted and premium on black. Every day of the year gets its own hue, so a color never repeats within a full year. These are separate from the manual accent picker.
             </p>
 
             <button

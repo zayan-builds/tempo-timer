@@ -27,32 +27,65 @@ export const ACCENT_HEX: Record<AccentName, string> = {
   gold: "#D4A543",
 };
 
-export const DAILY_ACCENT_HEX: Record<number, string> = {
-  0: "#D4865D",
-  1: "#5B8FA8",
-  2: "#6BBF8A",
-  3: "#B883CD",
-  4: "#D65E5E",
-  5: "#C9A84C",
-  6: "#E8DED0",
-};
+// ── Daily accent: a unique color for every day of the year ──
+// The old table keyed on getDay() (day of the WEEK), so colors repeated every
+// 7 days. Instead we walk the hue wheel by the golden angle (137.508°), which
+// is incommensurate with 360° — day-of-year 1..365 each land on a distinct
+// hue, so a color never repeats until a full year has passed. Fixed
+// saturation / lightness keep every result muted and premium on the black UI.
 
-const DAILY_ACCENT_NAMES: Record<number, string> = {
-  0: "terracotta",
-  1: "steel blue",
-  2: "sage",
-  3: "lavender",
-  4: "rose",
-  5: "antique gold",
-  6: "cream",
-};
+const GOLDEN_ANGLE = 137.508;
 
-export function getDailyAccent(): string {
-  return DAILY_ACCENT_HEX[new Date().getDay()] ?? ACCENT_HEX.amber;
+const HUE_NAMES: Array<[start: number, name: string]> = [
+  [0, "rosewood"],
+  [28, "clay"],
+  [58, "antique gold"],
+  [88, "sage"],
+  [120, "moss"],
+  [150, "eucalyptus"],
+  [178, "steel blue"],
+  [210, "cerulean"],
+  [240, "indigo"],
+  [270, "lavender"],
+  [300, "plum"],
+  [330, "berry"],
+];
+
+function hslToHex(h: number, s: number, l: number): string {
+  s /= 100;
+  l /= 100;
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  const to = (x: number) => Math.round(255 * x).toString(16).padStart(2, "0");
+  return `#${to(f(0))}${to(f(8))}${to(f(4))}`;
 }
 
-export function getDailyAccentName(): string {
-  return DAILY_ACCENT_NAMES[new Date().getDay()] ?? "amber";
+function dayOfYear(now = new Date()): number {
+  const start = new Date(now.getFullYear(), 0, 0);
+  return Math.floor((now.getTime() - start.getTime()) / 86400000);
+}
+
+function dailyHue(now = new Date()): number {
+  return (dayOfYear(now) * GOLDEN_ANGLE) % 360;
+}
+
+function hueName(h: number): string {
+  for (let i = 0; i < HUE_NAMES.length; i++) {
+    const [start, name] = HUE_NAMES[i];
+    const next = HUE_NAMES[(i + 1) % HUE_NAMES.length][0];
+    const span = (next - start + 360) % 360;
+    if (((h - start + 360) % 360) < span) return name;
+  }
+  return "amber";
+}
+
+export function getDailyAccent(now = new Date()): string {
+  return hslToHex(dailyHue(now), 52, 60);
+}
+
+export function getDailyAccentName(now = new Date()): string {
+  return hueName(dailyHue(now));
 }
 
 export type Settings = {

@@ -17,7 +17,7 @@ import { formatTime } from "@/lib/format";
 import { avgOfN, useHistory } from "@/hooks/useHistory";
 import { useSettings } from "@/lib/settings";
 import { sounds, unlockAudio } from "@/lib/sound";
-import { verifyBiometric, verifyPin } from "@/lib/auth";
+import { hasPin, verifyBiometric, verifyPin } from "@/lib/auth";
 import { buildComparisonContext, getComparison, ComparisonContext } from "@/lib/comparison";
 import { triggerHaptic, lightImpact, preloadHaptics } from "@/lib/haptics";
 import { App as CapApp } from "@capacitor/app";
@@ -203,7 +203,13 @@ export function TimerScreen() {
     setTimeout(() => setHistoryFlash(false), 200);
     if (settings.lockMethod === "biometric") {
       const ok = await verifyBiometric();
-      if (ok) { overlayOrderRef.current.push("history"); setHistoryOpen(true); }
+      if (ok) { overlayOrderRef.current.push("history"); setHistoryOpen(true); return; }
+      // Biometry unavailable (sensor removed / biometrics wiped) — fall back to
+      // the PIN if one exists, so history isn't locked out forever.
+      if (hasPin()) {
+        setPinFailCount(0);
+        overlayOrderRef.current.push("pin"); setPinVerifyOpen(true);
+      }
       return;
     }
     if (settings.lockMethod === "pin") {

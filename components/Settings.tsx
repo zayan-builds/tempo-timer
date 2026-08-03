@@ -116,6 +116,60 @@ function SpeakerIcon({ size = 12, opacity = 0.4 }: { size?: number; opacity?: nu
   );
 }
 
+// Apple/Linear-style action button: translucent neutral fill, hairline border,
+// tight radius, uppercase micro-label, springy press. No sharp filled shapes.
+function PillButton({
+  label,
+  onClick,
+  accentHex,
+  variant = "ghost",
+  dimmed = false,
+}: {
+  label: string;
+  onClick: () => void;
+  accentHex: string;
+  variant?: "filled" | "ghost";
+  dimmed?: boolean;
+}) {
+  const [pressed, setPressed] = useState(false);
+  const filled = variant === "filled";
+  return (
+    <button
+      onClick={() => { void gentleImpact(); onClick(); }}
+      onPointerDown={() => setPressed(true)}
+      onPointerUp={() => setPressed(false)}
+      onPointerLeave={() => setPressed(false)}
+      className="font-mono"
+      aria-pressed={pressed}
+      style={{
+        position: "relative",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        height: 38,
+        padding: "0 18px",
+        borderRadius: 11,
+        background: filled ? accentHex : "rgba(245,240,232,0.07)",
+        color: filled ? "#000000" : "#F5F0E8",
+        fontSize: 10.5,
+        letterSpacing: "0.18em",
+        textTransform: "uppercase",
+        border: filled ? "none" : "1px solid rgba(245,240,232,0.16)",
+        cursor: "pointer",
+        touchAction: "manipulation",
+        userSelect: "none",
+        opacity: dimmed ? 0.35 : 1,
+        transform: pressed ? "scale(0.96)" : "scale(1)",
+        transition:
+          "transform 180ms cubic-bezier(0.34,1.45,0.64,1), background 180ms ease, opacity 180ms ease, box-shadow 180ms ease",
+        boxShadow: filled ? `0 6px 18px ${accentHex}2e, inset 0 0 0 0.5px rgba(0,0,0,0.12)` : "none",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
 export function Settings({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { settings, update, accentHex } = useSettings();
   const { solves, bulkImport } = useHistory();
@@ -195,7 +249,10 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
   }
 
   async function handleExport() {
-    if (solves.length === 0) return;
+    if (solves.length === 0) {
+      showNote({ label: "nothing to export yet — solve your first cube" });
+      return;
+    }
     const json = exportSolves(solves);
     const date = new Date().toISOString().slice(0, 10);
     const fileName = `tempo-history-${date}.json`;
@@ -228,8 +285,11 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
       if (skipped > 0) parts.push(`${skipped} skipped (already exist)`);
       if (errors.length > 0) parts.push(`${errors.length} ${errors.length === 1 ? "entry" : "entries"} skipped (invalid)`);
       showNote({ label: parts.join(" · ") });
-    } catch {
-      showNote({ label: "could not read file" });
+    } catch (err) {
+      showNote({
+        label: "could not read file",
+        detail: err instanceof Error ? err.message : undefined,
+      });
     }
     e.target.value = "";
   }
@@ -580,21 +640,13 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                   data
                 </p>
                 <Row label="EXPORT HISTORY" rowIndex={6} animTick={animTick} accentHex={accentHex}>
-                  <button
-                    onClick={() => { void gentleImpact(); void handleExport(); }}
-                    className="font-mono"
-                    style={{
-                      color: accentHex, fontSize: 12, letterSpacing: "0.16em",
-                      background: "transparent", border: "none", cursor: "pointer",
-                      padding: "14px 10px", margin: "-14px -10px",
-                      opacity: solves.length > 0 ? 1 : 0.25,
-                      pointerEvents: solves.length > 0 ? "auto" : "none",
-                      touchAction: "manipulation",
-                      minHeight: 44,
-                    }}
-                  >
-                    {exporting ? "…" : "export"}
-                  </button>
+                  <PillButton
+                    label={exporting ? "…" : "export"}
+                    variant="filled"
+                    accentHex={accentHex}
+                    dimmed={solves.length === 0}
+                    onClick={() => { void handleExport(); }}
+                  />
                 </Row>
                 <div
                   className="font-mono"
@@ -619,20 +671,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                   )}
                 </div>
                 <Row label="IMPORT HISTORY" rowIndex={7} animTick={animTick} accentHex={accentHex}>
-                  <button
-                    onClick={handleImportClick}
-                    className="font-mono"
-                    style={{
-                      color: "#F5F0E8", fontSize: 12, letterSpacing: "0.16em",
-                      background: "transparent", border: "none", cursor: "pointer",
-                      padding: "14px 10px", margin: "-14px -10px",
-                      opacity: 0.55,
-                      touchAction: "manipulation",
-                      minHeight: 44,
-                    }}
-                  >
-                    import
-                  </button>
+                  <PillButton label="import" variant="ghost" accentHex={accentHex} onClick={handleImportClick} />
                 </Row>
                 <div
                   className="font-mono"
@@ -724,7 +763,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     letterSpacing: "0.18em",
                   }}
                 >
-                  v{process.env.NEXT_PUBLIC_APP_VERSION || "0.1.20"}
+                  v{process.env.NEXT_PUBLIC_APP_VERSION || "0.1.21"}
                 </p>
               </div>
 
