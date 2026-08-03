@@ -26,7 +26,8 @@ android/app/src/main/assets/capacitor.plugins.json
 !debug.keystore
 tempo-keystore
 
-# Release artifacts (keep local; upload AAB to Play manually)
+# Release artifacts (never committed; attached to GitHub releases instead)
+dist.zip
+dist.zip.sha256
 tempo-*.apk
 tempo-*.aab
-dist.zip.sha256
