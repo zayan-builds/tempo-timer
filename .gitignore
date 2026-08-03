@@ -29,3 +29,4 @@ tempo-keystore
 # Release artifacts (keep local; upload AAB to Play manually)
 tempo-*.apk
 tempo-*.aab
+dist.zip.sha256
