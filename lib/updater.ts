@@ -1,8 +1,13 @@
 const REPO = "zayan-builds/tempo-timer";
 const RELEASES_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
 const ASSET_NAME = "dist.zip";
+const SHA_ASSET_NAME = "dist.zip.sha256";
 const PREF_VERSION_KEY = "tempo.installedVersion";
-const BUNDLED_VERSION = stripV(process.env.NEXT_PUBLIC_APP_VERSION || "0.1.16");
+const BUNDLED_VERSION = stripV(process.env.NEXT_PUBLIC_APP_VERSION || "0.1.18");
+
+const VERSION_RE = /^\d+\.\d+\.\d+$/;
+const MAX_FETCH_RETRIES = 3;
+const FETCH_RETRY_DELAY = [2000, 4000, 8000];
 
 type GitHubAsset = { name: string; browser_download_url: string };
 type GitHubRelease = { tag_name?: string; assets?: GitHubAsset[] };
@@ -87,6 +92,19 @@ export async function clearStoredUpdaterVersion() {
   }
 }
 
+// Critical-path: mark the currently running bundle as successfully launched.
+// Per plugin docs this must be called on every launch, immediately, before any
+// network work — otherwise an OTA bundle is rolled back after 10s.
+export async function notifyReady(): Promise<void> {
+  try {
+    const mod = await import("@capgo/capacitor-updater");
+    await mod.CapacitorUpdater.notifyAppReady();
+    console.log("[updater] notifyAppReady ok");
+  } catch (e) {
+    console.warn("[updater] notifyAppReady failed", e);
+  }
+}
+
 async function fetchWithTimeout(url: string, timeoutMs = 10000, init: RequestInit = {}): Promise<Response> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(new Error(`timeout after ${timeoutMs}ms`)), timeoutMs);
@@ -104,6 +122,36 @@ async function fetchWithTimeout(url: string, timeoutMs = 10000, init: RequestIni
   }
 }
 
+async function fetchReleaseWithRetry(url: string, attempt = 0): Promise<GitHubRelease> {
+  try {
+    const res = await fetchWithTimeout(url, 10000);
+    console.log("[updater] GitHub status", res.status);
+    if (!res.ok) {
+      throw new Error(`GitHub HTTP ${res.status}`);
+    }
+    return (await res.json()) as GitHubRelease;
+  } catch (e) {
+    if (attempt < MAX_FETCH_RETRIES - 1) {
+      const delay = FETCH_RETRY_DELAY[attempt] || 8000;
+      console.log(`[updater] fetch attempt ${attempt + 1} failed, retrying in ${delay}ms`, e);
+      await new Promise((r) => setTimeout(r, delay));
+      return fetchReleaseWithRetry(url, attempt + 1);
+    }
+    throw e;
+  }
+}
+
+async function fetchSha256(url: string): Promise<string | null> {
+  try {
+    const res = await fetchWithTimeout(url, 10000);
+    if (!res.ok) return null;
+    const text = (await res.text()).trim();
+    return /^[0-9a-fA-F]{64}$/.test(text) ? text.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function checkForUpdate(): Promise<void> {
   console.log("[updater] checkForUpdate start");
   setStatus({ download: "idle", error: undefined, done: false });
@@ -117,39 +165,36 @@ export async function checkForUpdate(): Promise<void> {
     console.log("[updater] plugin import failed", e);
   }
 
-  // Use stored version only if it was written after a confirmed OTA set().
-  // Fresh install (builtin bundle) → "0.0.0" so GitHub release always appears newer.
-  let currentVersion = "0.0.0";
-  const stored = await getStoredVersion();
-  console.log("[updater] stored version:", stored ?? "(none — treating as 0.0.0)");
-  if (stored) {
-    currentVersion = stored;
-  } else if (CapacitorUpdater) {
-    try {
-      const cur = await CapacitorUpdater.current();
-      const fromBundle = (cur as unknown as { bundle?: { version?: string } }).bundle?.version;
-      console.log("[updater] CapacitorUpdater.current() =>", JSON.stringify(cur));
-      if (fromBundle && fromBundle !== "builtin") currentVersion = stripV(fromBundle);
-    } catch (e) {
-      console.log("[updater] current() failed", e);
-    }
+  if (!CapacitorUpdater) {
+    setStatus({ error: "plugin unavailable", download: "skipped", done: true });
+    return;
   }
+
+  let currentVersion = "0.0.0";
+  try {
+    const cur = await CapacitorUpdater.current();
+    const fromBundle = (cur as unknown as { bundle?: { version?: string } }).bundle?.version;
+    console.log("[updater] CapacitorUpdater.current() =>", JSON.stringify(cur));
+    if (fromBundle && fromBundle !== "builtin") currentVersion = stripV(fromBundle);
+  } catch (e) {
+    console.log("[updater] current() failed, using 0.0.0", e);
+  }
+
+  const stored = await getStoredVersion();
+  console.log("[updater] stored version:", stored ?? "(none)");
+  if (stored && compareVersions(stored, currentVersion) === "newer") {
+    currentVersion = stored;
+  }
+
   console.log("[updater] currentVersion:", currentVersion);
   setStatus({ current: currentVersion });
 
-  // Fetch release manifest with cache-busting and timeout.
   let release: GitHubRelease | null = null;
   const cacheBuster = `?t=${Date.now()}`;
   try {
     const url = RELEASES_URL + cacheBuster;
     console.log("[updater] fetching", url);
-    const res = await fetchWithTimeout(url, 10000);
-    console.log("[updater] GitHub status", res.status);
-    if (!res.ok) {
-      setStatus({ error: `GitHub HTTP ${res.status}`, done: true });
-      return;
-    }
-    release = (await res.json()) as GitHubRelease;
+    release = await fetchReleaseWithRetry(url);
   } catch (e) {
     const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
     console.log("[updater] fetch failed:", msg);
@@ -160,11 +205,17 @@ export async function checkForUpdate(): Promise<void> {
   const rawTag = release.tag_name || "";
   const latest = stripV(rawTag);
   console.log("[updater] release tag_name (raw):", rawTag, "=> stripped:", latest);
-  console.log("[updater] release assets:", (release.assets || []).map((a) => a.name));
+
   if (!latest) {
     setStatus({ error: "no tag on release", done: true });
     return;
   }
+
+  if (!VERSION_RE.test(latest)) {
+    setStatus({ error: `invalid version format: ${latest}`, done: true });
+    return;
+  }
+
   setStatus({ latest });
 
   const cmp = compareVersions(latest, currentVersion);
@@ -178,7 +229,6 @@ export async function checkForUpdate(): Promise<void> {
   }
   console.log("[updater] update available — proceeding to download");
 
-  // Locate dist.zip — fall back to the well-known direct path if the asset enumeration is empty.
   const apiAsset = (release.assets || []).find((a) => a.name === ASSET_NAME);
   let downloadUrl = apiAsset?.browser_download_url;
   if (!downloadUrl) {
@@ -187,10 +237,12 @@ export async function checkForUpdate(): Promise<void> {
   }
   setStatus({ assetFound: Boolean(apiAsset) });
 
-  if (!CapacitorUpdater) {
-    setStatus({ error: "plugin unavailable", download: "skipped", done: true });
-    return;
-  }
+  // Integrity: fetch the matching sha256 (published alongside dist.zip).
+  const shaAsset = (release.assets || []).find((a) => a.name === SHA_ASSET_NAME);
+  const shaUrl =
+    shaAsset?.browser_download_url || `https://github.com/${REPO}/releases/download/v${latest}/${SHA_ASSET_NAME}`;
+  const checksum = await fetchSha256(shaUrl);
+  console.log("[updater] checksum:", checksum ? checksum.slice(0, 16) + "…" : "(none)");
 
   setStatus({ download: "pending" });
   try {
@@ -198,6 +250,7 @@ export async function checkForUpdate(): Promise<void> {
     const bundle = await CapacitorUpdater.download({
       url: downloadUrl,
       version: latest,
+      ...(checksum ? { checksum } : {}),
     });
     console.log("[updater] download() returned:", JSON.stringify(bundle));
     if (!bundle?.id) {
@@ -205,19 +258,16 @@ export async function checkForUpdate(): Promise<void> {
       setStatus({ download: "failed", error: "no bundle id", done: true });
       return;
     }
-    console.log("[updater] calling set() with bundle.id:", bundle.id);
-    await CapacitorUpdater.set({ id: bundle.id });
-    console.log("[updater] set() returned successfully");
+
+    // Schedule for the next app launch — no forced reload, Play-compliant.
+    // The running session stays untouched; if the new bundle ever fails to
+    // start, notifyAppReady is not called and the plugin auto-rolls back.
+    console.log("[updater] calling next() with bundle.id:", bundle.id);
+    await CapacitorUpdater.next({ id: bundle.id });
+    console.log("[updater] next() scheduled bundle for next launch");
     await setStoredVersion(latest);
     console.log("[updater] stored version updated to:", latest);
     setStatus({ download: "ok", done: true });
-    console.log("[updater] calling reload()");
-    try {
-      await CapacitorUpdater.reload();
-      console.log("[updater] reload() called — app should restart");
-    } catch (e) {
-      console.log("[updater] reload() failed (bundle will apply on next launch):", e);
-    }
   } catch (e) {
     const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
     console.log("[updater] FATAL download/apply error:", msg);

@@ -1,13 +1,13 @@
 {
   "name": "tempo",
-  "version": "0.1.16",
+  "version": "0.1.18",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "build:android": "next build && npx cap sync android"
+    "build:android": "next build && node scripts/verify-dist.cjs && npx cap sync android"
   },
   "dependencies": {
     "@aparajita/capacitor-biometric-auth": "^10.0.0",
@@ -17,6 +17,7 @@
     "@capacitor/filesystem": "^8.1.2",
     "@capacitor/haptics": "^8.0.2",
     "@capacitor/preferences": "^8.0.1",
+    "@capacitor/share": "^8.0.1",
     "@capgo/capacitor-updater": "^8.45.11",
     "dom-to-image-more": "^3.7.2",
     "framer-motion": "^11.11.0",

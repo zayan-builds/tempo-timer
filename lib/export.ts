@@ -60,17 +60,31 @@ export function parseImport(raw: string): ImportResult {
   return { solves, errors };
 }
 
-export async function downloadJson(json: string, filename = `tempo-history.json`): Promise<void> {
+export async function downloadJson(
+  json: string,
+  filename = `tempo-history.json`,
+): Promise<"shared" | "saved"> {
+  // Native: write to cache, resolve a real file:// URI, then hand it to the
+  // system share sheet. Passing a bare filename breaks Android silently.
   try {
-    const { Filesystem, Directory } = await import("@capacitor/filesystem");
-    await Filesystem.writeFile({
-      path: filename,
-      data: json,
-      directory: Directory.Documents,
-    });
-    return;
+    const { Filesystem, Directory, Encoding } = await import("@capacitor/filesystem");
+    const path = `tempo/${Date.now()}-${filename}`;
+    await Filesystem.writeFile({ path, data: json, directory: Directory.Cache, encoding: Encoding.UTF8 });
+    const { uri } = await Filesystem.getUri({ path, directory: Directory.Cache });
+    try {
+      const { Share } = await import("@capacitor/share");
+      await Share.share({
+        title: "Tempo history",
+        text: "Check out my solve history on Tempo",
+        files: [uri],
+      });
+      return "shared";
+    } catch {
+      // share cancelled/declined — file is still saved in cache
+      return "saved";
+    }
   } catch {
-    // Capacitor Filesystem unavailable — fallback to web download
+    // Capacitor Filesystem unavailable — fall back to web download
   }
   const blob = new Blob([json], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -81,4 +95,5 @@ export async function downloadJson(json: string, filename = `tempo-history.json`
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+  return "saved";
 }

@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Solve } from "@/hooks/useHistory";
 import { formatTime, isValidFormatted } from "@/lib/format";
-import { getComparison } from "@/lib/comparison";
+import { buildComparisonContext, getComparison } from "@/lib/comparison";
 import { ShareCard } from "./ShareCard";
 import { lightImpact } from "@/lib/haptics";
 
@@ -67,6 +67,7 @@ type RowProps = {
 };
 
 const SWIPE_COMMIT = 80;
+const UNDO_WINDOW_MS = 5000;
 
 function Row({ solve, isPB, onSwipeDelete, onShare, accentHex }: RowProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -232,21 +233,29 @@ function Row({ solve, isPB, onSwipeDelete, onShare, accentHex }: RowProps) {
             {formatClock(solve.timestamp)}
           </span>
           <button
-            aria-label="share"
+            aria-label="share this solve"
+            title="share"
             onClick={(e) => { e.stopPropagation(); void lightImpact(); onShare(solve); }}
-            className="group"
             style={{
-              background: "transparent", border: "none", cursor: "pointer",
-              opacity: 0.45, padding: 4, display: "flex", alignItems: "center",
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              opacity: 0.85,
+              padding: 11,
+              marginRight: -11,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#F5F0E8",
               touchAction: "manipulation",
-              transition: "opacity 0.2s ease, transform 0.2s ease",
+              transition: "opacity 0.2s ease, transform 0.2s ease, color 0.2s ease",
             }}
-            onPointerEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.75"; (e.currentTarget as HTMLElement).style.transform = "scale(1.1)"; }}
-            onPointerLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.45"; (e.currentTarget as HTMLElement).style.transform = "scale(1)"; }}
-            onPointerDown={(e) => { (e.currentTarget as HTMLElement).style.transform = "scale(0.92)"; }}
-            onPointerUp={(e) => { (e.currentTarget as HTMLElement).style.transform = "scale(1.1)"; }}
+            onPointerEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; (e.currentTarget as HTMLElement).style.color = accentHex; }}
+            onPointerLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.85"; (e.currentTarget as HTMLElement).style.color = "#F5F0E8"; }}
+            onPointerDown={(e) => { (e.currentTarget as HTMLElement).style.transform = "scale(0.9)"; }}
+            onPointerUp={(e) => { (e.currentTarget as HTMLElement).style.transform = "scale(1)"; }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F5F0E8" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
               <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
               <polyline points="16 6 12 2 8 6" />
               <line x1="12" y1="2" x2="12" y2="15" />
@@ -454,52 +463,64 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
 
   const [confirmClear, setConfirmClear] = useState(false);
   const [shareData, setShareData] = useState<{ solve: Solve; isPB: boolean; comparison: string } | null>(null);
-  const [undoState, setUndoState] = useState<{ solve: Solve } | null>(null);
+  const [undo, setUndo] = useState<{ id: string; solve: Solve } | null>(null);
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
-  const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingIdRef = useRef<string | null>(null);
+  const undoRef = useRef<{ id: string; solve: Solve } | null>(null);
+  const undoWindowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shareRef = useRef<HTMLDivElement>(null);
+
+  useEffect(
+    () => () => {
+      if (undoWindowTimerRef.current) clearTimeout(undoWindowTimerRef.current);
+    },
+    [],
+  );
 
   function handleSwipeDelete(id: string) {
     const solve = validSolves.find((s) => s.id === id);
     if (!solve) return;
 
-    // Commit any previous pending delete immediately
-    if (pendingTimerRef.current) {
-      clearTimeout(pendingTimerRef.current);
-      if (pendingIdRef.current) onDelete(pendingIdRef.current);
-      pendingTimerRef.current = null;
-      pendingIdRef.current = null;
+    // A new swipe supersedes any pending one — commit the previous delete first.
+    if (undoWindowTimerRef.current) {
+      clearTimeout(undoWindowTimerRef.current);
+      undoWindowTimerRef.current = null;
+      if (undoRef.current) onDelete(undoRef.current.id);
     }
 
     // Remove row from rendered list — component unmounts, no inline style persists
     setHiddenIds((prev) => new Set([...prev, id]));
 
-    pendingIdRef.current = id;
-    pendingTimerRef.current = setTimeout(() => {
-      onDelete(id);
-      pendingTimerRef.current = null;
-      pendingIdRef.current = null;
-      setHiddenIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
-      setUndoState(null);
-    }, 3000);
+    undoRef.current = { id, solve };
+    setUndo({ id, solve });
 
-    setUndoState({ solve });
+    undoWindowTimerRef.current = setTimeout(() => {
+      undoWindowTimerRef.current = null;
+      const pending = undoRef.current;
+      undoRef.current = null;
+      setUndo(null);
+      if (pending) {
+        onDelete(pending.id);
+        setHiddenIds((prev) => { const n = new Set(prev); n.delete(pending.id); return n; });
+      }
+    }, UNDO_WINDOW_MS);
   }
 
   function handleUndo() {
-    if (!pendingTimerRef.current) return;
-    clearTimeout(pendingTimerRef.current);
-    const id = pendingIdRef.current;
-    pendingTimerRef.current = null;
-    pendingIdRef.current = null;
-    if (id) setHiddenIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
-    setUndoState(null);
+    const pending = undoRef.current;
+    if (!pending) return;
+    if (undoWindowTimerRef.current) {
+      clearTimeout(undoWindowTimerRef.current);
+      undoWindowTimerRef.current = null;
+    }
+    undoRef.current = null;
+    setUndo(null);
+    setHiddenIds((prev) => { const n = new Set(prev); n.delete(pending.id); return n; });
   }
 
   const handleShare = useCallback(
     async (solve: Solve) => {
-      const comparison = getComparison(solve.time_ms / 1000);
+      const ctx = buildComparisonContext(solve.time_ms, false, solves);
+      const comparison = getComparison(ctx);
       setShareData({ solve, isPB: pbIds.has(solve.id), comparison });
       await new Promise((r) => setTimeout(r, 80));
       const node = shareRef.current;
@@ -530,7 +551,7 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
         setShareData(null);
       }
     },
-    [pbIds],
+    [pbIds, solves],
   );
 
   return (
@@ -765,43 +786,53 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
         </div>
       )}
 
-      {/* Undo toast */}
+      {/* Undo pill — top-anchored, the whole pill is the undo button */}
       <div
+        key={undo ? undo.id : "undo-none"}
+        role="button"
+        aria-label="undo delete"
+        onClick={handleUndo}
         style={{
           position: "fixed",
-          bottom: 80,
+          top: "calc(8vh + 96px)",
           left: "50%",
-          transform: undoState ? "translateX(-50%) translateY(0)" : "translateX(-50%) translateY(12px)",
-          background: "rgba(30,30,30,0.96)",
-          border: "1px solid rgba(245,240,232,0.12)",
-          borderRadius: 8,
+          zIndex: 2100,
+          transform: undo ? "translateX(-50%) translateY(0)" : "translateX(-50%) translateY(-20px)",
+          opacity: undo ? 1 : 0,
+          pointerEvents: undo ? "auto" : "none",
+          transition: "opacity 240ms ease, transform 240ms cubic-bezier(0.32, 0.72, 0, 1)",
+          background: "rgba(24,24,24,0.92)",
+          backdropFilter: "blur(16px)",
+          WebkitBackdropFilter: "blur(16px)",
+          border: "1px solid rgba(245,240,232,0.14)",
+          borderRadius: 14,
+          boxShadow: "0 14px 44px rgba(0,0,0,0.65)",
           display: "flex",
           alignItems: "center",
-          gap: 16,
-          padding: "10px 16px",
-          zIndex: 2000,
-          backdropFilter: "blur(8px)",
-          WebkitBackdropFilter: "blur(8px)",
+          gap: 20,
+          padding: "14px 18px 13px",
+          overflow: "hidden",
           whiteSpace: "nowrap",
-          pointerEvents: undoState ? "auto" : "none",
-          opacity: undoState ? 1 : 0,
-          transition: "opacity 0.2s ease, transform 0.2s ease",
+          cursor: "pointer",
+          touchAction: "manipulation",
         }}
       >
-        <span className="font-mono" style={{ color: "#F5F0E8", opacity: 0.55, fontSize: 10, letterSpacing: "0.15em" }}>
+        <span className="font-mono" style={{ color: "#F5F0E8", opacity: 0.6, fontSize: 11, letterSpacing: "0.14em" }}>
           solve deleted
         </span>
-        <button
-          onClick={handleUndo}
-          className="font-mono"
-          style={{
-            color: accentHex, fontSize: 10, letterSpacing: "0.2em",
-            background: "transparent", border: "none", cursor: "pointer",
-            padding: 0, touchAction: "manipulation",
-          }}
-        >
+        <span className="font-mono" style={{ color: accentHex, fontSize: 11, letterSpacing: "0.18em" }}>
           undo
-        </button>
+        </span>
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 2, background: "rgba(245,240,232,0.06)" }}>
+          <div
+            style={{
+              height: "100%",
+              background: accentHex,
+              transformOrigin: "left",
+              animation: undo ? `tempo-undo-countdown ${UNDO_WINDOW_MS}ms linear forwards` : "none",
+            }}
+          />
+        </div>
       </div>
 
       {/* Share card (off-screen) */}

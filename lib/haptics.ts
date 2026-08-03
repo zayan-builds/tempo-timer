@@ -7,50 +7,72 @@ const WEB_PATTERNS: Record<HapticKind, number | number[]> = {
   pb: [10, 8, 10, 8, 10, 8, 60],
 };
 
-let cachedHaptics: typeof import("@capacitor/haptics") | null = null;
-let nativeUnavailable = false;
+let nativeModule: typeof import("@capacitor/haptics") | null = null;
+let preloadPromise: Promise<typeof import("@capacitor/haptics") | null> | null = null;
 
-async function getNative() {
-  if (nativeUnavailable) return null;
-  if (cachedHaptics) return cachedHaptics;
+// Kick off the dynamic import once at startup so the first interaction
+// never waits on module resolution (and so haptics fire every time).
+export function preloadHaptics(): Promise<typeof import("@capacitor/haptics") | null> {
+  if (preloadPromise) return preloadPromise;
+  preloadPromise = (async () => {
+    if (typeof window === "undefined") return null;
+    try {
+      const mod = await import("@capacitor/haptics");
+      nativeModule = mod;
+      return mod;
+    } catch {
+      // WebView without the plugin — fall back to navigator.vibrate.
+      return null;
+    }
+  })();
+  return preloadPromise;
+}
+
+async function getNative(): Promise<typeof import("@capacitor/haptics") | null> {
+  return preloadHaptics();
+}
+
+function webVibrate(pattern: number | number[]): void {
+  if (typeof navigator === "undefined" || !("vibrate" in navigator)) return;
   try {
-    const mod = await import("@capacitor/haptics");
-    cachedHaptics = mod;
-    return mod;
+    navigator.vibrate(pattern);
   } catch {
-    nativeUnavailable = true;
-    return null;
+    /**/
   }
 }
 
-function webFallback(kind: HapticKind) {
-  if (typeof navigator === "undefined" || !("vibrate" in navigator)) return;
-  try {
-    navigator.vibrate(WEB_PATTERNS[kind]);
-  } catch {}
-}
-
+// Settings / gentle UI touches — intentionally softer than the timer's
+// armed/start/stop taps.
 export async function gentleImpact(): Promise<void> {
-  try { navigator.vibrate(5); } catch {}
+  const native = await getNative();
+  if (native) {
+    try {
+      await native.Haptics.vibrate({ duration: 4 });
+      return;
+    } catch {
+      /* fall through to web */
+    }
+  }
+  webVibrate(4);
 }
 
 export async function lightImpact(): Promise<void> {
   const native = await getNative();
-  if (!native) {
-    try { navigator.vibrate(10); } catch {}
-    return;
+  if (native) {
+    try {
+      await native.Haptics.impact({ style: native.ImpactStyle.Light });
+      return;
+    } catch {
+      /* fall through to web */
+    }
   }
-  try {
-    await native.Haptics.impact({ style: native.ImpactStyle.Light });
-  } catch {
-    try { navigator.vibrate(10); } catch {}
-  }
+  webVibrate(10);
 }
 
 export async function triggerHaptic(kind: HapticKind): Promise<void> {
   const native = await getNative();
   if (!native) {
-    webFallback(kind);
+    webVibrate(WEB_PATTERNS[kind]);
     return;
   }
   try {
@@ -69,6 +91,6 @@ export async function triggerHaptic(kind: HapticKind): Promise<void> {
         return;
     }
   } catch {
-    webFallback(kind);
+    webVibrate(WEB_PATTERNS[kind]);
   }
 }

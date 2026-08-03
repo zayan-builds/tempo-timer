@@ -18,8 +18,8 @@ import { avgOfN, useHistory } from "@/hooks/useHistory";
 import { useSettings } from "@/lib/settings";
 import { sounds, unlockAudio } from "@/lib/sound";
 import { verifyBiometric, verifyPin } from "@/lib/auth";
-import { getComparison } from "@/lib/comparison";
-import { triggerHaptic, lightImpact } from "@/lib/haptics";
+import { buildComparisonContext, getComparison, ComparisonContext } from "@/lib/comparison";
+import { triggerHaptic, lightImpact, preloadHaptics } from "@/lib/haptics";
 import { App as CapApp } from "@capacitor/app";
 
 type State = "idle" | "armed" | "running" | "stopped" | "pb";
@@ -61,6 +61,9 @@ export function TimerScreen() {
   const comparisonShowRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typewriterTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const closeTopOverlayRef = useRef<() => void>(() => {});
+  const overlayOrderRef = useRef<string[]>([]);
+
+  const sessionStartRef = useRef<number>(Date.now());
 
   const clearComparisonTimers = useCallback(() => {
     if (comparisonShowRef.current) {
@@ -76,19 +79,19 @@ export function TimerScreen() {
       clearComparisonTimers();
       setComparisonFull(null);
       setTypedText("");
+      const ctx = buildComparisonContext(elapsedMs, isPB, solves, sessionStartRef.current);
       const showDelay = isPB ? 800 : 500;
       comparisonShowRef.current = setTimeout(() => {
-        const text = getComparison(elapsedMs / 1000);
+        const text = getComparison(ctx);
         setComparisonFull(text);
         setTypedText("");
         for (let i = 1; i <= text.length; i++) {
           const t = setTimeout(() => setTypedText(text.slice(0, i)), i * 28);
           typewriterTimersRef.current.push(t);
         }
-        // comparison stays visible until next solve (cleared on armHold)
       }, showDelay);
     },
-    [clearComparisonTimers],
+    [clearComparisonTimers, solves],
   );
 
 
@@ -98,9 +101,26 @@ export function TimerScreen() {
     overlayOpenRef.current = infoOpen || settingsOpen || historyOpen || pinVerifyOpen;
   }, [infoOpen, settingsOpen, historyOpen, pinVerifyOpen]);
 
+  // Guard: if multiple overlays are open simultaneously (crash state), close them all
+  useEffect(() => {
+    const openCount = [infoOpen, settingsOpen, historyOpen, pinVerifyOpen].filter(Boolean).length;
+    if (openCount > 1) {
+      console.warn("[overlay-guard] detected multiple open overlays, closing all");
+      setInfoOpen(false);
+      setSettingsOpen(false);
+      setHistoryOpen(false);
+      setPinVerifyOpen(false);
+    }
+  }, [infoOpen, settingsOpen, historyOpen, pinVerifyOpen]);
+
   useEffect(() => {
     if (settings.proMode && !scramble) setScramble(generateScramble());
   }, [settings.proMode, scramble]);
+
+  // Warm up the native haptics plugin so the first tap never lags.
+  useEffect(() => {
+    void preloadHaptics();
+  }, []);
 
   const hasSolveToday = useMemo(() => {
     const today = startOfDay(Date.now());
@@ -178,17 +198,17 @@ export function TimerScreen() {
   }, []);
 
   const openHistoryGated = useCallback(async () => {
-    if (!settings.lockHistory) { setHistoryOpen(true); return; }
+    if (!settings.lockHistory) { overlayOrderRef.current.push("history"); setHistoryOpen(true); return; }
     setHistoryFlash(true);
     setTimeout(() => setHistoryFlash(false), 200);
     if (settings.lockMethod === "biometric") {
       const ok = await verifyBiometric();
-      if (ok) setHistoryOpen(true);
+      if (ok) { overlayOrderRef.current.push("history"); setHistoryOpen(true); }
       return;
     }
     if (settings.lockMethod === "pin") {
       setPinFailCount(0);
-      setPinVerifyOpen(true);
+      overlayOrderRef.current.push("pin"); setPinVerifyOpen(true);
       return;
     }
     setHistoryOpen(true);
@@ -345,7 +365,7 @@ export function TimerScreen() {
         {/* Info button */}
         <button
           aria-label="info"
-          onClick={() => { void lightImpact(); setInfoOpen(true); }}
+          onClick={() => { overlayOrderRef.current.push("info"); void lightImpact(); setInfoOpen(true); }}
           className="font-mono"
           style={{
             position: "absolute",
@@ -365,7 +385,7 @@ export function TimerScreen() {
         {/* Settings button */}
         <button
           aria-label="settings"
-          onClick={() => { void lightImpact(); setSettingsOpen(true); }}
+          onClick={() => { overlayOrderRef.current.push("settings"); void lightImpact(); setSettingsOpen(true); }}
           style={{
             position: "absolute",
             top: 10, right: 12, zIndex: 30,
@@ -524,7 +544,7 @@ export function TimerScreen() {
           {/* History button */}
           <button
             aria-label="open history"
-            onClick={() => { void lightImpact(); void openHistoryGated(); }}
+            onClick={() => { overlayOrderRef.current.push("history"); void lightImpact(); void openHistoryGated(); }}
             style={{
               background: "transparent",
               border: "none",

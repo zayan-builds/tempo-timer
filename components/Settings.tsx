@@ -123,6 +123,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
   const [pinDisableOpen, setPinDisableOpen] = useState(false);
   const [authToast, setAuthToast] = useState<string | null>(null);
   const [importToast, setImportToast] = useState<string | null>(null);
+  const [exportToast, setExportToast] = useState<string | null>(null);
   const [proTip, setProTip] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -174,7 +175,9 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
     if (solves.length === 0) return;
     const json = exportSolves(solves);
     const date = new Date().toISOString().slice(0, 10);
-    await downloadJson(json, `tempo-history-${date}.json`);
+    const result = await downloadJson(json, `tempo-history-${date}.json`);
+    setExportToast(result === "shared" ? "history exported" : "history saved");
+    setTimeout(() => setExportToast(null), 2600);
   }
 
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
@@ -338,7 +341,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                           margin: 0,
                         }}
                       >
-                        Shows a scramble before each solve — a sequence of moves to randomize your cube for a fair start.
+                        Adds a scramble sequence before every solve, so each attempt starts from the same fair position.
                       </p>
                       <p
                         className="font-mono"
@@ -352,7 +355,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                           marginBottom: 0,
                         }}
                       >
-                        Also tracks rolling averages (ao5, ao12) so you can measure consistency, not just your best.
+                        Also tracks your rolling averages (ao5, ao12) to measure consistency, not just your fastest time.
                       </p>
                     </div>
                   </div>
@@ -627,7 +630,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     letterSpacing: "0.18em",
                   }}
                 >
-                  v{process.env.NEXT_PUBLIC_APP_VERSION || "0.1.16"}
+                  v{process.env.NEXT_PUBLIC_APP_VERSION || "0.1.18"}
                 </p>
               </div>
 
@@ -717,15 +720,15 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
           fontSize: 10,
           letterSpacing: "0.3em",
           pointerEvents: "none",
-          opacity: authToast || importToast ? 1 : 0,
-          transform: authToast || importToast ? "translateY(0)" : "translateY(8px)",
+          opacity: authToast || importToast || exportToast ? 1 : 0,
+          transform: authToast || importToast || exportToast ? "translateY(0)" : "translateY(8px)",
           transition: "opacity 0.25s ease, transform 0.25s ease",
           textAlign: "center",
           paddingLeft: 24,
           paddingRight: 24,
         }}
       >
-        {authToast || importToast}
+        {authToast || importToast || exportToast}
       </div>
     </>
   );
