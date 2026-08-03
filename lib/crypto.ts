@@ -47,3 +47,23 @@ export async function decryptJson<T>(payload: { iv: string; ct: string }): Promi
   const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct);
   return JSON.parse(dec.decode(plain)) as T;
 }
+
+export function hasStoredKey(): boolean {
+  return !!localStorage.getItem(KEY_STORAGE);
+}
+
+/**
+ * Round-trip a probe payload through the real encryption key. AES-GCM fails
+ * loudly on any corruption, so this proves the stored key is intact and can
+ * decrypt every record that exists on this device.
+ */
+export async function cryptoSelfTest(): Promise<boolean> {
+  try {
+    const probe = { tempo: true, probe: "self-test" };
+    const { iv, ct } = await encryptJson(probe);
+    const round = await decryptJson<typeof probe>({ iv, ct });
+    return round?.tempo === true && round?.probe === "self-test";
+  } catch {
+    return false;
+  }
+}

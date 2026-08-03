@@ -1,8 +1,10 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { ACCENT_HEX, AccentName, getDailyAccentName, useSettings } from "@/lib/settings";
-import { exportSolves, parseImport, readFileText, downloadJson } from "@/lib/export";
-import { useHistory } from "@/hooks/useHistory";
+import { exportSolves, parseImport, readFileText, downloadJson, pickJsonFile } from "@/lib/export";
+import { Solve, useHistory } from "@/hooks/useHistory";
+import { cryptoSelfTest } from "@/lib/crypto";
+import { useTap } from "@/lib/tap";
 import {
   clearAuth,
   isBiometricAvailable,
@@ -35,6 +37,9 @@ const HOLD_OPTIONS: Array<{ value: 300 | 500 | 750; label: string }> = [
 
 const HAIRLINE = "1px solid rgba(245,240,232,0.08)";
 const SCRAMBLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%!?[]{}\\^~<>*&=+";
+const SPRING = "cubic-bezier(0.34, 1.56, 0.64, 1)";
+const SETTLE = "cubic-bezier(0.32, 0.72, 0, 1)";
+const OFF_WIDTH = 3 * 12 + 2 * 12 * 0.3; // "off" at 12px, 0.3em tracking
 
 function Row({
   label,
@@ -87,22 +92,53 @@ function Row({
 }
 
 function Toggle({ on, onChange, accentHex }: { on: boolean; onChange: (v: boolean) => void; accentHex: string }) {
+  const [scrambling, setScrambling] = useState(false);
+  const [tick, setTick] = useState(0);
+  const tap = useTap(() => {
+    setScrambling(true);
+    onChange(!on);
+  });
+
+  useEffect(() => {
+    if (!scrambling) return;
+    const iv = setInterval(() => setTick((t) => t + 1), 36);
+    const to = setTimeout(() => setScrambling(false), 380);
+    return () => {
+      clearInterval(iv);
+      clearTimeout(to);
+    };
+  }, [scrambling]);
+
+  const label = on ? "on" : "off";
+  const text = scrambling
+    ? label
+        .split("")
+        .map(() => SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)])
+        .join("")
+    : label;
+
   return (
     <button
-      onClick={() => { void gentleImpact(); onChange(!on); }}
+      aria-label={on ? "enabled" : "disabled"}
       className="font-mono"
       style={{
         color: on ? accentHex : "#F5F0E8",
-        opacity: on ? 1 : 0.4,
+        opacity: scrambling ? 0.95 : on ? 1 : 0.4,
         fontSize: 12,
         letterSpacing: "0.3em",
+        minWidth: OFF_WIDTH,
+        display: "inline-flex",
+        justifyContent: "center",
         background: "transparent",
         border: "none",
         cursor: "pointer",
-        padding: 0,
+        padding: "12px 0",
+        margin: "-12px 0",
+        touchAction: "manipulation",
       }}
+      {...tap}
     >
-      {on ? "on" : "off"}
+      {text}
     </button>
   );
 }
@@ -131,48 +167,116 @@ function PillButton({
   variant?: "filled" | "ghost";
   dimmed?: boolean;
 }) {
-  const [pressed, setPressed] = useState(false);
+  const tap = useTap(() => {
+    if (!dimmed) {
+      void gentleImpact();
+      onClick();
+    }
+  });
   const filled = variant === "filled";
   return (
     <button
-      onClick={() => { void gentleImpact(); onClick(); }}
-      onPointerDown={() => setPressed(true)}
-      onPointerUp={() => setPressed(false)}
-      onPointerLeave={() => setPressed(false)}
       className="font-mono"
-      aria-pressed={pressed}
+      aria-pressed={tap.pressed}
       style={{
         position: "relative",
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
-        height: 38,
+        height: 40,
         padding: "0 18px",
-        borderRadius: 11,
-        background: filled ? accentHex : "rgba(245,240,232,0.07)",
+        borderRadius: 10,
+        background: filled
+          ? accentHex
+          : tap.pressed
+            ? "rgba(245,240,232,0.10)"
+            : "rgba(245,240,232,0.05)",
         color: filled ? "#000000" : "#F5F0E8",
         fontSize: 10.5,
         letterSpacing: "0.18em",
         textTransform: "uppercase",
-        border: filled ? "none" : "1px solid rgba(245,240,232,0.16)",
-        cursor: "pointer",
+        border: filled ? "none" : `1px solid rgba(245,240,232,${tap.pressed ? 0.16 : 0.10})`,
+        cursor: dimmed ? "default" : "pointer",
         touchAction: "manipulation",
         userSelect: "none",
+        WebkitTapHighlightColor: "transparent",
         opacity: dimmed ? 0.35 : 1,
-        transform: pressed ? "scale(0.96)" : "scale(1)",
-        transition:
-          "transform 180ms cubic-bezier(0.34,1.45,0.64,1), background 180ms ease, opacity 180ms ease, box-shadow 180ms ease",
+        transform: tap.pressed ? "scale(0.97)" : "scale(1)",
+        transition: `transform ${tap.pressed ? "120ms" : "220ms"} ${tap.pressed ? SPRING : SETTLE}, background 120ms ease, border-color 120ms ease, opacity 180ms ease, box-shadow 180ms ease, filter 120ms ease`,
+        filter: filled && tap.pressed ? "brightness(0.9)" : "none",
         boxShadow: filled ? `0 6px 18px ${accentHex}2e, inset 0 0 0 0.5px rgba(0,0,0,0.12)` : "none",
       }}
+      {...tap}
     >
       {label}
     </button>
   );
 }
 
+const ERROR_NOTE_STARTS = [
+  "could not",
+  "the file is empty",
+  "not a valid",
+  "this file doesn't",
+  "no solves",
+  "no valid",
+  "import failed",
+  "nothing to export",
+];
+
+function isErrorNote(label: string): boolean {
+  return ERROR_NOTE_STARTS.some((p) => label.startsWith(p));
+}
+
+function NotePanel({
+  note,
+  accentHex,
+}: {
+  note: { label: string; detail?: string } | null;
+  accentHex: string;
+}) {
+  const error = !!note && isErrorNote(note.label);
+  return (
+    <div
+      className="font-mono"
+      style={{
+        overflow: "hidden",
+        maxHeight: note ? 52 : 0,
+        opacity: note ? 1 : 0,
+        transition: "max-height 260ms ease, opacity 220ms ease",
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 8,
+        paddingLeft: 2,
+        paddingRight: 2,
+      }}
+    >
+      <span
+        style={{
+          width: 5,
+          height: 5,
+          borderRadius: "50%",
+          background: error ? "#C0392B" : accentHex,
+          marginTop: 4,
+          flexShrink: 0,
+          opacity: 0.9,
+        }}
+      />
+      <span style={{ color: error ? "#E06C5C" : accentHex, fontSize: 9, letterSpacing: "0.14em", lineHeight: 1.6, minWidth: 0 }}>
+        {note?.label ?? ""}
+        {note?.detail && (
+          <span style={{ color: "#F5F0E8", opacity: 0.4, marginLeft: 8, letterSpacing: "0.1em" }}>
+            {note.detail}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
+
 export function Settings({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { settings, update, accentHex } = useSettings();
-  const { solves, bulkImport } = useHistory();
+  const { solves, bulkImport, stats } = useHistory();
   const [pinSetupOpen, setPinSetupOpen] = useState(false);
   const [pinDisableOpen, setPinDisableOpen] = useState(false);
   const [authToast, setAuthToast] = useState<string | null>(null);
@@ -180,12 +284,32 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
   const [exporting, setExporting] = useState(false);
   const [exportNote, setExportNote] = useState<{ label: string; detail?: string } | null>(null);
   const [importNote, setImportNote] = useState<{ label: string; detail?: string } | null>(null);
+  const [importStage, setImportStage] = useState<{ name: string; size: number; count: number; solves: Solve[] } | null>(null);
+  const [verifyState, setVerifyState] = useState<"idle" | "checking" | "ok" | "fail">("idle");
   const noteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [animTick, setAnimTick] = useState(0);
   const animStartRef = useRef<number | null>(null);
   const animRafRef = useRef<number | null>(null);
+
+  const runVerify = useCallback(async () => {
+    setVerifyState("checking");
+    const ok = await cryptoSelfTest();
+    setVerifyState(ok ? "ok" : "fail");
+  }, []);
+
+  const verifyTap = useTap(() => {
+    void gentleImpact();
+    void runVerify();
+  });
+
+  useEffect(() => {
+    if (open) {
+      if (settings.encryptHistory) void runVerify();
+      else setVerifyState("idle");
+    }
+  }, [open, settings.encryptHistory, runVerify]);
   useEffect(() => {
     if (open && scrollRef.current) {
       scrollRef.current.scrollTop = 0;
@@ -256,16 +380,41 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
     const json = exportSolves(solves);
     const date = new Date().toISOString().slice(0, 10);
     const fileName = `tempo-history-${date}.json`;
+    const kb = (new Blob([json]).size / 1024).toFixed(1);
     setExporting(true);
-    const result = await downloadJson(json, fileName);
+    await downloadJson(json, fileName);
     setExporting(false);
-    if (result.kind === "downloads") {
-      showNote({ label: "exported to downloads", detail: fileName });
-    } else if (result.kind === "shared") {
-      showNote({ label: "exported", detail: fileName });
-    } else {
-      showNote({ label: "exported", detail: fileName });
+    showNote({
+      label: `exported — ${solves.length} ${solves.length === 1 ? "solve" : "solves"}`,
+      detail: `${fileName} · ${kb} KB`,
+    });
+  }
+
+  async function stageImport(text: string, name: string, size: number) {
+    const { solves: parsed, errors } = parseImport(text);
+    if (parsed.length === 0) {
+      setImportStage(null);
+      const msg = errors.length > 0 ? errors[0] : "no valid solves found";
+      showNote({ label: msg });
+      return;
     }
+    setImportStage({ name, size, count: parsed.length, solves: parsed });
+    if (errors.length > 0) {
+      showNote({
+        label: `${errors.length} ${errors.length === 1 ? "entry" : "entries"} skipped (invalid)`,
+      });
+    }
+  }
+
+  async function handleImportClick() {
+    void gentleImpact();
+    const { picked, cancelled } = await pickJsonFile();
+    if (cancelled) return;
+    if (picked) {
+      await stageImport(picked.text, picked.name, picked.size);
+      return;
+    }
+    fileInputRef.current?.click();
   }
 
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
@@ -273,18 +422,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
     if (!file) return;
     try {
       const text = await readFileText(file);
-      const { solves: parsed, errors } = parseImport(text);
-      if (parsed.length === 0) {
-        const msg = errors.length > 0 ? errors[0] : "no valid solves found";
-        showNote({ label: msg });
-        return;
-      }
-      const { imported, skipped } = await bulkImport(parsed);
-      const parts: string[] = [];
-      if (imported > 0) parts.push(`${imported} ${imported === 1 ? "solve" : "solves"} imported`);
-      if (skipped > 0) parts.push(`${skipped} skipped (already exist)`);
-      if (errors.length > 0) parts.push(`${errors.length} ${errors.length === 1 ? "entry" : "entries"} skipped (invalid)`);
-      showNote({ label: parts.join(" · ") });
+      await stageImport(text, file.name, file.size);
     } catch (err) {
       showNote({
         label: "could not read file",
@@ -294,9 +432,19 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
     e.target.value = "";
   }
 
-  function handleImportClick() {
-    void gentleImpact();
-    fileInputRef.current?.click();
+  async function confirmImport() {
+    if (!importStage) return;
+    const parsed = importStage.solves;
+    setImportStage(null);
+    try {
+      const { imported, skipped } = await bulkImport(parsed);
+      const parts: string[] = [];
+      if (imported > 0) parts.push(`${imported} ${imported === 1 ? "solve" : "solves"} imported`);
+      if (skipped > 0) parts.push(`${skipped} skipped (already exist)`);
+      showNote({ label: parts.join(" · ") || "nothing new to import" });
+    } catch {
+      showNote({ label: "import failed — try again" });
+    }
   }
 
   function showAuthToast() {
@@ -588,14 +736,62 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                   )}
                 </div>
 
-                <Row
-                  label="ENCRYPT HISTORY"
-                  animTick={animTick}
-                  rowIndex={4}
-                  accentHex={accentHex}
-                >
-                  <Toggle on={settings.encryptHistory} onChange={(v) => update("encryptHistory", v)} accentHex={accentHex} />
-                </Row>
+                <div style={{ paddingBottom: 18, borderBottom: HAIRLINE }}>
+                  <Row
+                    label="ENCRYPT HISTORY"
+                    animTick={animTick}
+                    rowIndex={4}
+                    accentHex={accentHex}
+                  >
+                    <Toggle on={settings.encryptHistory} onChange={(v) => update("encryptHistory", v)} accentHex={accentHex} />
+                  </Row>
+                  <div style={{ marginTop: -2, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <span
+                      className="font-mono"
+                      style={{
+                        fontSize: 9,
+                        letterSpacing: "0.14em",
+                        color: "#F5F0E8",
+                        opacity: 0.5,
+                        lineHeight: 1.6,
+                        minWidth: 0,
+                      }}
+                    >
+                      {settings.encryptHistory
+                        ? `encrypted at rest — ${stats.encrypted} of ${stats.total} solves`
+                        : "plaintext on this device"}
+                    </span>
+                    {settings.encryptHistory && (
+                      <button
+                        aria-label="verify encryption"
+                        className="font-mono"
+                        style={{
+                          fontSize: 9,
+                          letterSpacing: "0.18em",
+                          color:
+                            verifyState === "fail" ? "#E06C5C" : verifyState === "ok" ? accentHex : "#F5F0E8",
+                          opacity: verifyState === "ok" ? 0.9 : 0.6,
+                          background: "transparent",
+                          border: "none",
+                          cursor: "pointer",
+                          padding: "10px 4px",
+                          margin: "-10px -4px",
+                          touchAction: "manipulation",
+                          flexShrink: 0,
+                        }}
+                        {...verifyTap}
+                      >
+                        {verifyState === "checking"
+                          ? "checking…"
+                          : verifyState === "ok"
+                            ? "key verified"
+                            : verifyState === "fail"
+                              ? "verify failed"
+                              : "verify"}
+                      </button>
+                    )}
+                  </div>
+                </div>
 
                 <div style={{ paddingTop: 20, paddingBottom: 20 }}>
                   <div className="flex items-center justify-between">
@@ -648,52 +844,76 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     onClick={() => { void handleExport(); }}
                   />
                 </Row>
-                <div
-                  className="font-mono"
-                  style={{
-                    overflow: "hidden",
-                    maxHeight: exportNote ? 40 : 0,
-                    opacity: exportNote ? 1 : 0,
-                    transition: "max-height 260ms ease, opacity 220ms ease",
-                    display: "flex",
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  <span style={{ color: accentHex, fontSize: 9, letterSpacing: "0.16em" }}>
-                    {exportNote?.label ?? ""}
-                  </span>
-                  {exportNote?.detail && (
-                    <span style={{ color: "#F5F0E8", opacity: 0.4, fontSize: 9, letterSpacing: "0.12em" }}>
-                      {exportNote.detail}
-                    </span>
-                  )}
+                <div style={{ marginTop: -2, marginBottom: 2 }}>
+                  <NotePanel note={exportNote} accentHex={accentHex} />
                 </div>
                 <Row label="IMPORT HISTORY" rowIndex={7} animTick={animTick} accentHex={accentHex}>
                   <PillButton label="import" variant="ghost" accentHex={accentHex} onClick={handleImportClick} />
                 </Row>
-                <div
-                  className="font-mono"
-                  style={{
-                    overflow: "hidden",
-                    maxHeight: importNote ? 40 : 0,
-                    opacity: importNote ? 1 : 0,
-                    transition: "max-height 260ms ease, opacity 220ms ease",
-                    display: "flex",
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  <span style={{ color: accentHex, fontSize: 9, letterSpacing: "0.16em" }}>
-                    {importNote?.label ?? ""}
-                  </span>
-                  {importNote?.detail && (
-                    <span style={{ color: "#F5F0E8", opacity: 0.4, fontSize: 9, letterSpacing: "0.12em" }}>
-                      {importNote.detail}
-                    </span>
-                  )}
+                {importStage && (
+                  <div
+                    className="font-mono"
+                    style={{
+                      marginBottom: 8,
+                      padding: "12px 14px",
+                      borderRadius: 10,
+                      background: "rgba(245,240,232,0.03)",
+                      border: HAIRLINE,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "baseline",
+                        gap: 10,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: accentHex,
+                          fontSize: 9.5,
+                          letterSpacing: "0.16em",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        restore backup?
+                      </span>
+                      <span
+                        style={{
+                          color: "#F5F0E8",
+                          opacity: 0.5,
+                          fontSize: 9,
+                          letterSpacing: "0.12em",
+                          whiteSpace: "nowrap",
+                          minWidth: 0,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {importStage.name} · {importStage.size > 0 ? `${(importStage.size / 1024).toFixed(1)} KB · ` : ""}
+                        {importStage.count} {importStage.count === 1 ? "solve" : "solves"}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      <PillButton
+                        label="import"
+                        variant="filled"
+                        accentHex={accentHex}
+                        onClick={() => { void confirmImport(); }}
+                      />
+                      <PillButton
+                        label="cancel"
+                        variant="ghost"
+                        accentHex={accentHex}
+                        onClick={() => setImportStage(null)}
+                      />
+                    </div>
+                  </div>
+                )}
+                <div style={{ marginTop: importStage ? -2 : 0, marginBottom: 2 }}>
+                  <NotePanel note={importNote} accentHex={accentHex} />
                 </div>
                 <input
                   ref={fileInputRef}
@@ -763,7 +983,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     letterSpacing: "0.18em",
                   }}
                 >
-                  v{process.env.NEXT_PUBLIC_APP_VERSION || "0.1.21"}
+                  v{process.env.NEXT_PUBLIC_APP_VERSION || "0.1.22"}
                 </p>
               </div>
 

@@ -4,7 +4,8 @@ import { Solve } from "@/hooks/useHistory";
 import { formatTime, isValidFormatted } from "@/lib/format";
 import { buildComparisonContext, getComparison } from "@/lib/comparison";
 import { ShareCard } from "./ShareCard";
-import { lightImpact } from "@/lib/haptics";
+import { gentleImpact, lightImpact } from "@/lib/haptics";
+import { useTap } from "@/lib/tap";
 
 type Props = {
   open: boolean;
@@ -185,6 +186,11 @@ function Row({ solve, isPB, onSwipeDelete, onShare, accentHex }: RowProps) {
     }, 160);
   }
 
+  const deleteTap = useTap(() => {
+    void lightImpact();
+    handleDeleteTap();
+  });
+
   return (
     <div
       ref={wrapRef}
@@ -214,7 +220,6 @@ function Row({ solve, isPB, onSwipeDelete, onShare, accentHex }: RowProps) {
         <button
           aria-label="delete this solve"
           title="delete"
-          onClick={(e) => { e.stopPropagation(); void lightImpact(); handleDeleteTap(); }}
           style={{
             width: SWIPE_COMMIT,
             height: "100%",
@@ -228,7 +233,9 @@ function Row({ solve, isPB, onSwipeDelete, onShare, accentHex }: RowProps) {
             gap: 7,
             color: "#FFFFFF",
             touchAction: "manipulation",
+            WebkitTapHighlightColor: "transparent",
           }}
+          {...deleteTap}
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
             <polyline points="3 6 5 6 21 6" />
@@ -574,6 +581,11 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
     setHiddenIds((prev) => { const n = new Set(prev); n.delete(pending.id); return n; });
   }
 
+  const undoTap = useTap(() => {
+    void gentleImpact();
+    handleUndo();
+  });
+
   const handleShare = useCallback(
     async (solve: Solve) => {
       const ctx = buildComparisonContext(solve.time_ms, false, solves);
@@ -856,16 +868,19 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
         key={undo ? undo.id : "undo-none"}
         role="button"
         aria-label="undo delete"
-        onClick={handleUndo}
         style={{
           position: "fixed",
           bottom: 84,
           left: "50%",
           zIndex: 2100,
-          transform: undo ? "translateX(-50%) translateY(0)" : "translateX(-50%) translateY(24px)",
+          transform: undo
+            ? `translateX(-50%) translateY(0) ${undoTap.pressed ? "scale(0.97)" : "scale(1)"}`
+            : "translateX(-50%) translateY(24px) scale(1)",
           opacity: undo ? 1 : 0,
           pointerEvents: undo ? "auto" : "none",
-          transition: "opacity 240ms ease, transform 240ms cubic-bezier(0.32, 0.72, 0, 1)",
+          transition: undo
+            ? `transform ${undoTap.pressed ? "120ms" : "260ms"} ${undoTap.pressed ? SPRING : SETTLE}, opacity 240ms ease`
+            : "opacity 240ms ease, transform 240ms cubic-bezier(0.32, 0.72, 0, 1)",
           background: "rgba(24,24,24,0.92)",
           backdropFilter: "blur(16px)",
           WebkitBackdropFilter: "blur(16px)",
@@ -880,7 +895,10 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
           whiteSpace: "nowrap",
           cursor: "pointer",
           touchAction: "manipulation",
+          WebkitTapHighlightColor: "transparent",
+          userSelect: "none",
         }}
+        {...undoTap}
       >
         <span className="font-mono" style={{ color: "#F5F0E8", opacity: 0.6, fontSize: 11, letterSpacing: "0.14em" }}>
           solve deleted

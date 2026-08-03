@@ -1,13 +1,13 @@
-# Play Console Release Guide — Tempo v0.1.21
+# Play Console Release Guide — Tempo v0.1.22
 
-Everything needed to push `com.zayan.tempo` (versionCode 22) to Google Play.
+Everything needed to push `com.zayan.tempo` (versionCode 23) to Google Play.
 
 ## 1. Upload artifact
 
 | File | Path |
 |---|---|
-| AAB (upload to Play) | `tempo-v0.1.21.aab` |
-| Signed APK (sideload/test) | `tempo-v0.1.21.apk` |
+| AAB (upload to Play) | `tempo-v0.1.22.aab` |
+| Signed APK (sideload/test) | `tempo-v0.1.22.apk` |
 
 Both are signed with the release keystore (`android/app/tempo-keystore`, cert CN=Syed Zayan,
 SHA-256 `506a4ae5fb3206be2aaef44fcd868c1fa6491f894321d7a9ead1bd414ec304d4`). To regenerate:
@@ -22,7 +22,7 @@ $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
 
 - **App name:** Tempo
 - **Package name:** `com.zayan.tempo`
-- **Version:** 0.1.21 (versionCode 22)
+- **Version:** 0.1.22 (versionCode 23)
 - **minSdk:** 24 (Android 7.0) — covers ~95%+ of active devices
 - **targetSdk / compileSdk:** 36
 
@@ -72,10 +72,10 @@ except possibly "sharing location" — answer no.
 
 1. Play Console → your app → **Production** → **Create new release** (or **Test tracks** first
    for a staged rollout — closed testing with internal testers is recommended for the first release).
-2. Upload `tempo-v0.1.21.aab`.
+2. Upload `tempo-v0.1.22.aab`.
 3. Release notes (English) — see `RELEASE_NOTES.md`.
 4. Save → review. The versionCode must be **higher** than any previous internal/closed/beta
-   build (22 is the current max).
+   build (23 is the current max).
 5. Roll out to a small percentage first (staged rollout) if uncertain.
 
 > ⚠️ Play Console **App signing**: the first uploaded AAB's upload key registers Play App
@@ -129,7 +129,7 @@ Tempo is **policy-clean for submission** except the Play Console forms themselve
 - **Icon:** The launcher icon must not use transparency outside the safe zone. Our adaptive
   foreground keeps the cube 100% inside the safe circle (verified), and `playstore-icon-512.png`
   is opaque. Play Protect may show a stale icon on old installs — uninstall before testing.
-- **Version code:** never lower than a previously uploaded code (use 22+, not 21).
+- **Version code:** never lower than a previously uploaded code (use 23+, not 22).
 - **Target SDK:** 36 is required for new updates — already set.
 - **Permissions:** don't claim the storage permission in the listing; it's maxSdk 28 only.
 

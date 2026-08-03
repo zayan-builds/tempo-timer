@@ -100,6 +100,24 @@ export function useHistory() {
   const { settings } = useSettings();
   const [solves, setSolves] = useState<Solve[]>([]);
   const [ready, setReady] = useState(false);
+  const [stats, setStats] = useState<{ total: number; encrypted: number }>({ total: 0, encrypted: 0 });
+
+  const refreshStats = useCallback(async () => {
+    try {
+      const db = await openDB();
+      const records: Stored[] = await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, "readonly");
+        const req = tx.objectStore(STORE).getAll();
+        req.onsuccess = () => resolve(req.result as Stored[]);
+        req.onerror = () => reject(req.error);
+      });
+      let encrypted = 0;
+      for (const r of records) if ("encrypted" in r && r.encrypted) encrypted++;
+      setStats({ total: records.length, encrypted });
+    } catch {
+      // stats are best-effort
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,10 +131,11 @@ export function useHistory() {
       .catch(() => {
         if (!cancelled) setReady(true);
       });
+    void refreshStats();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshStats]);
 
   const addSolve = useCallback(
     (time_ms: number, scramble: string, event = "3x3"): { isPB: boolean; solves: Solve[] } => {
@@ -131,21 +150,21 @@ export function useHistory() {
       const prevBest = solves.length ? Math.min(...solves.map((s) => s.time_ms)) : Infinity;
       const isPB = solves.length > 0 && time_ms < prevBest;
       setSolves(next);
-      void persist(solve, settings.encryptHistory);
+      void persist(solve, settings.encryptHistory).then(() => void refreshStats());
       return { isPB, solves: next };
     },
-    [solves, settings.encryptHistory],
+    [solves, settings.encryptHistory, refreshStats],
   );
 
   const deleteSolve = useCallback((id: string) => {
     setSolves((prev) => prev.filter((s) => s.id !== id));
-    void removeFromDb(id);
-  }, []);
+    void removeFromDb(id).then(() => void refreshStats());
+  }, [refreshStats]);
 
   const clearAll = useCallback(() => {
     setSolves([]);
-    void clearAllFromDb();
-  }, []);
+    void clearAllFromDb().then(() => void refreshStats());
+  }, [refreshStats]);
 
   const refreshSolves = useCallback(() => {
     loadAll()
@@ -170,10 +189,11 @@ export function useHistory() {
     }
     const all = await loadAll();
     setSolves(all);
+    await refreshStats();
     return { imported, skipped };
-  }, [settings.encryptHistory]);
+  }, [settings.encryptHistory, refreshStats]);
 
-  return { solves, ready, addSolve, deleteSolve, clearAll, refreshSolves, bulkImport };
+  return { solves, ready, stats, addSolve, deleteSolve, clearAll, refreshSolves, bulkImport };
 }
 
 export function avgOfN(solves: Solve[], n: number): number | null {

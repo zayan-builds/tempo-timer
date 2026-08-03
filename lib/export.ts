@@ -68,9 +68,12 @@ export function parseImport(raw: string): ImportResult {
 }
 
 export async function readFileText(file: File): Promise<string> {
-  if (typeof file.text === "function") {
+  // Android WebView's file.text() can return an empty string for files from
+  // the system picker — arrayBuffer + TextDecoder is the most reliable path.
+  if (typeof file.arrayBuffer === "function") {
     try {
-      return await file.text();
+      const buf = await file.arrayBuffer();
+      return new TextDecoder("utf-8").decode(new Uint8Array(buf));
     } catch {
       // fall through to FileReader
     }
@@ -81,6 +84,37 @@ export async function readFileText(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error || new Error("could not read file"));
     reader.readAsText(file);
   });
+}
+
+export type PickedJson = { name: string; size: number; text: string };
+export type PickOutcome = { picked: PickedJson | null; cancelled: boolean };
+
+/**
+ * Native path for picking a JSON backup: the custom JsonPicker plugin opens
+ * the real Android document picker (ACTION_OPEN_DOCUMENT) and reads the file
+ * with native file IO, so the WebView's flaky file-input bridge never sees
+ * it. Returns { cancelled: true } when the user dismisses the picker.
+ * Returns { picked: null, cancelled: false } when the caller should fall
+ * back to the web <input type="file"> (plain web, or plugin unavailable).
+ */
+export async function pickJsonFile(): Promise<PickOutcome> {
+  try {
+    const cap = typeof window !== "undefined" ? (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor : undefined;
+    if (!cap?.isNativePlatform?.()) return { picked: null, cancelled: false };
+    const { JsonPicker } = await import("@/lib/native-json-picker");
+    const res = await JsonPicker.pick();
+    if (typeof res.text !== "string") return { picked: null, cancelled: false };
+    return {
+      picked: { name: res.name || "tempo-history.json", size: res.size ?? 0, text: res.text },
+      cancelled: false,
+    };
+  } catch (err) {
+    if (err && typeof err === "object" && (err as { code?: string }).code === "PICK_CANCELLED") {
+      return { picked: null, cancelled: true };
+    }
+    // Plugin unavailable or failed — let the caller use the web input.
+    return { picked: null, cancelled: false };
+  }
 }
 
 export type ExportOutcome =
