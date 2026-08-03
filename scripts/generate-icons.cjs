@@ -2,14 +2,17 @@ const sharp = require("sharp");
 const path = require("path");
 const fs = require("fs");
 
-const LOGO = path.resolve(__dirname, "..", "New Logo.png");
+// v0.1.19: the crown — pixelated cube on a black squircle, background removed.
+const LOGO = path.resolve(__dirname, "..", "tempo NEW logo.png");
 const RES = path.resolve(__dirname, "..", "android", "app", "src", "main", "res");
 const PUBLIC = path.resolve(__dirname, "..", "public");
 
 // Adaptive icon: 108dp viewport, 66dp safe-zone circle = 61.1% of canvas.
-// The cube's bright faces sit inside the safe circle with comfortable margin.
-const APP_ICON_FRAC = 0.55; // cube bounding square as fraction of canvas (adaptive + legacy)
-const FULLBLEED_FRAC = 0.72; // play store + web (displayed full-bleed, no mask crop)
+// The cube is WIDE (aspect ~1.30) and spans ~99% of the squircle width, so the
+// cube's WIDTH is the binding constraint. frac 0.55 => cube width ~54% of the
+// canvas, safely inside the 61.1% mask circle.
+const APP_ICON_FRAC = 0.55; // adaptive foreground + legacy launcher (masked)
+const FULLBLEED_FRAC = 0.72; // play store + web (displayed full-bleed, no mask)
 
 const mipmaps = [
   { dir: "mipmap-mdpi", size: 48 },
@@ -21,50 +24,29 @@ const mipmaps = [
 
 const BLACK_BG = { r: 0, g: 0, b: 0, a: 255 };
 
-function isCreamLike(r, g, b, a) {
-  // feathered/transparent edge, or warm cream background (red clearly above blue)
-  if (a < 230) return true;
-  return r - b >= 5 && r >= 195 && g >= 190 && b >= 180;
-}
-
-async function extractCube() {
+async function extractArtwork() {
   const { data, info } = await sharp(LOGO).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const W = info.width, H = info.height;
-  const alpha = (x, y) => data[(y * W + x) * 4 + 3];
 
-  const isBg = (x, y) => {
-    const i = (y * W + x) * 4;
-    return isCreamLike(data[i], data[i + 1], data[i + 2], data[i + 3]);
-  };
-
-  // BFS flood fill from every border pixel through cream/feathered background
-  const bg = new Uint8Array(W * H);
-  const queue = [];
-  const seed = (x, y) => {
-    if (x < 0 || y < 0 || x >= W || y >= H) return;
-    const idx = y * W + x;
-    if (bg[idx] || !isBg(x, y)) return;
-    bg[idx] = 1;
-    queue.push(idx);
-  };
-  for (let x = 0; x < W; x++) { seed(x, 0); seed(x, H - 1); }
-  for (let y = 0; y < H; y++) { seed(0, y); seed(W - 1, y); }
-  while (queue.length) {
-    const idx = queue.pop();
-    const x = idx % W, y = (idx / W) | 0;
-    if (x > 0 && !bg[idx - 1] && isBg(x - 1, y)) { bg[idx - 1] = 1; queue.push(idx - 1); }
-    if (x < W - 1 && !bg[idx + 1] && isBg(x + 1, y)) { bg[idx + 1] = 1; queue.push(idx + 1); }
-    if (y > 0 && !bg[idx - W] && isBg(x, y - 1)) { bg[idx - W] = 1; queue.push(idx - W); }
-    if (y < H - 1 && !bg[idx + W] && isBg(x, y + 1)) { bg[idx + W] = 1; queue.push(idx + W); }
+  // Trim to the opaque bounding box (squircle + cube). The logo already has a
+  // fully transparent background, so we just drop the empty margin.
+  let minX = W, minY = H, maxX = 0, maxY = 0;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (data[(y * W + x) * 4 + 3] > 20) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
   }
-
-  for (let i = 0; i < W * H; i++) {
-    if (bg[i]) data[i * 4 + 3] = 0;
-  }
-
   const src = sharp(data, { raw: { width: W, height: H, channels: 4 } });
-  // trim transparent border so the cube is tight for sizing
-  return src.trim().png().toBuffer({ resolveWithObject: true });
+  const { data: trimmed, info: tinfo } = await src
+    .extract({ left: minX, top: minY, width: maxX - minX + 1, height: maxY - minY + 1 })
+    .png()
+    .toBuffer({ resolveWithObject: true });
+  return { data: trimmed, info: tinfo };
 }
 
 function blendSquare(src, srcW, srcH, dst, dstW, offsetX, offsetY, opaqueBase) {
@@ -96,10 +78,10 @@ function blendSquare(src, srcW, srcH, dst, dstW, offsetX, offsetY, opaqueBase) {
   }
 }
 
-async function makeIcon(cubePng, canvasSize, frac, opaqueBase, outPath) {
-  const cubeSize = Math.round(canvasSize * frac);
-  const resized = await sharp(cubePng)
-    .resize(cubeSize, cubeSize, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+async function makeIcon(artPng, canvasSize, frac, opaqueBase, outPath) {
+  const artSize = Math.round(canvasSize * frac);
+  const resized = await sharp(artPng)
+    .resize(artSize, artSize, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
@@ -119,31 +101,22 @@ async function makeIcon(cubePng, canvasSize, frac, opaqueBase, outPath) {
   await sharp(canvas, { raw: { width: canvasSize, height: canvasSize, channels: 4 } })
     .png()
     .toFile(outPath);
-  return { canvasSize, cubeSize };
-}
-
-function verifyOpaque(outPath, canvasSize) {
-  // Assert the generated legacy/play icons are fully opaque (Play Store requirement).
-  const png = fs.readFileSync(outPath);
-  return png.subarray(png.length - 8).includes(Buffer.from([0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82]))
-    ? "png ok"
-    : "png?";
+  return { canvasSize, artSize };
 }
 
 async function main() {
   const logoMeta = await sharp(LOGO).metadata();
   console.log(`Source logo: ${logoMeta.width}x${logoMeta.height} alpha=${logoMeta.hasAlpha}`);
 
-  console.log("Extracting cube (removing cream/feathered background)...");
-  const { data: cubePng, info: cubeInfo } = await extractCube();
-  console.log(`Extracted cube: ${cubeInfo.width}x${cubeInfo.height}`);
+  const { data: artPng, info: artInfo } = await extractArtwork();
+  console.log(`Trimmed artwork: ${artInfo.width}x${artInfo.height} (aspect ${(artInfo.width / artInfo.height).toFixed(3)})`);
 
-  // ── Adaptive foregrounds (transparent, cube floats) ──
+  // ── Adaptive foregrounds (transparent, black squircle floats on black) ──
   console.log("\nGenerating adaptive foregrounds...");
   for (const m of mipmaps) {
     const out = path.join(RES, m.dir, "ic_launcher_foreground.png");
-    await makeIcon(cubePng, m.size, APP_ICON_FRAC, false, out);
-    console.log(`  ${out} (${m.size}x${m.size}, cube ${Math.round(m.size * APP_ICON_FRAC)}px)`);
+    await makeIcon(artPng, m.size, APP_ICON_FRAC, false, out);
+    console.log(`  ${out} (${m.size}x${m.size}, art ${Math.round(m.size * APP_ICON_FRAC)}px)`);
   }
 
   // ── Legacy launcher icons (opaque black, pre-API 26 fallback) ──
@@ -151,7 +124,7 @@ async function main() {
   for (const m of mipmaps) {
     const a = path.join(RES, m.dir, "ic_launcher.png");
     const b = path.join(RES, m.dir, "ic_launcher_round.png");
-    await makeIcon(cubePng, m.size, APP_ICON_FRAC, true, a);
+    await makeIcon(artPng, m.size, APP_ICON_FRAC, true, a);
     fs.copyFileSync(a, b);
     console.log(`  ${a} + round (${m.size}x${m.size})`);
   }
@@ -159,18 +132,18 @@ async function main() {
   // ── Play Store 512 (opaque, no alpha) ──
   console.log("\nGenerating Play Store icon...");
   const playOut = path.join(PUBLIC, "playstore-icon-512.png");
-  await makeIcon(cubePng, 512, FULLBLEED_FRAC, true, playOut);
+  await makeIcon(artPng, 512, FULLBLEED_FRAC, true, playOut);
   console.log(`  ${playOut} (512x512, opaque)`);
 
   // ── Web / PWA icons (opaque) ──
   console.log("\nGenerating web icons...");
   for (const size of [512, 192]) {
     const out = path.join(PUBLIC, `icon-${size}.png`);
-    await makeIcon(cubePng, size, FULLBLEED_FRAC, true, out);
+    await makeIcon(artPng, size, FULLBLEED_FRAC, true, out);
     console.log(`  ${out} (${size}x${size})`);
   }
   const fav = path.join(PUBLIC, "favicon.ico");
-  await makeIcon(cubePng, 48, 1.0, true, fav);
+  await makeIcon(artPng, 48, 1.0, true, fav);
   console.log(`  ${fav} (48x48)`);
 
   // ── Verification ──
@@ -178,28 +151,28 @@ async function main() {
   const { data: fgData, info: fgInfo } = await sharp(
     path.join(RES, "mipmap-xxxhdpi", "ic_launcher_foreground.png"),
   ).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  // fraction of bright content within safe circle (radius 0.3056 * canvas)
   const S = fgInfo.width;
   const cx = S / 2, cy = S / 2;
   const safeR = 0.3056 * S;
-  let brightInside = 0, brightOutside = 0;
+  let inside = 0, outside = 0, cubeInside = 0;
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
     const a = fgData[(y * S + x) * 4 + 3];
     if (a < 180) continue;
     const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
-    if (d <= safeR) brightInside++; else brightOutside++;
+    if (d <= safeR) { inside++; if ((fgData[(y * S + x) * 4] + fgData[(y * S + x) * 4 + 1] + fgData[(y * S + x) * 4 + 2]) / 3 > 80) cubeInside++; }
+    else outside++;
   }
-  const total = brightInside + brightOutside;
-  console.log(`  adaptive foreground xxxhdpi: bright px inside safe circle = ${brightInside} (${total ? (brightInside / total * 100).toFixed(1) : 0}%), outside = ${brightOutside}`);
-  const clippedPct = total ? (brightOutside / total * 100).toFixed(2) : "0";
-  console.log(`  -> clipped-on-circle risk: ${clippedPct}% of bright pixels`);
+  const total = inside + outside;
+  console.log(`  adaptive xxxhdpi: opaque px inside safe circle = ${inside} (${total ? (inside / total * 100).toFixed(1) : 0}%), outside = ${outside}`);
+  console.log(`  cube (bright) px inside safe circle = ${cubeInside}`);
+  console.log(`  -> clipped-on-circle risk: ${total ? (outside / total * 100).toFixed(2) : "0"}% of opaque px`);
 
   for (const p of [playOut, path.join(PUBLIC, "icon-512.png"), path.join(RES, "mipmap-xxxhdpi", "ic_launcher.png")]) {
     const meta = await sharp(p).metadata();
     const { data: d, info: inf } = await sharp(p).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     let minA = 255;
     for (let i = 3; i < d.length; i += 4) if (d[i] < minA) minA = d[i];
-    console.log(`  ${path.basename(p)}: ${inf.width}x${inf.height} alpha=${meta.hasAlpha ? "yes" : "no"} minAlpha=${minA} ${minA === 255 ? "OPAQUE ✓" : "NOT opaque ✗"}`);
+    console.log(`  ${path.basename(p)}: ${inf.width}x${inf.height} alpha=${meta.hasAlpha ? "yes" : "no"} minAlpha=${minA} ${minA === 255 ? "OPAQUE OK" : "NOT opaque"}`);
   }
 
   console.log("\nDone!");

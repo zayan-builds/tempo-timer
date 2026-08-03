@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { ACCENT_HEX, AccentName, getDailyAccentName, useSettings } from "@/lib/settings";
-import { exportSolves, parseImport, downloadJson } from "@/lib/export";
+import { exportSolves, parseImport, readFileText, downloadJson } from "@/lib/export";
 import { useHistory } from "@/hooks/useHistory";
 import {
   clearAuth,
@@ -122,9 +122,11 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
   const [pinSetupOpen, setPinSetupOpen] = useState(false);
   const [pinDisableOpen, setPinDisableOpen] = useState(false);
   const [authToast, setAuthToast] = useState<string | null>(null);
-  const [importToast, setImportToast] = useState<string | null>(null);
-  const [exportToast, setExportToast] = useState<string | null>(null);
   const [proTip, setProTip] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportNote, setExportNote] = useState<{ label: string; detail?: string } | null>(null);
+  const [importNote, setImportNote] = useState<{ label: string; detail?: string } | null>(null);
+  const noteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [animTick, setAnimTick] = useState(0);
@@ -135,6 +137,23 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
       scrollRef.current.scrollTop = 0;
     }
   }, [open]);
+
+  useEffect(
+    () => () => {
+      if (noteTimerRef.current) clearTimeout(noteTimerRef.current);
+    },
+    [],
+  );
+
+  function showNote(note: { label: string; detail?: string }) {
+    if (noteTimerRef.current) clearTimeout(noteTimerRef.current);
+    setExportNote(null);
+    setImportNote(null);
+    const isExport = note.label.startsWith("exported") || note.label.startsWith("nothing");
+    const target = isExport ? setExportNote : setImportNote;
+    target(note);
+    noteTimerRef.current = setTimeout(() => target(null), 3800);
+  }
 
   useEffect(() => {
     if (open) {
@@ -171,25 +190,36 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
     window.open("https://github.com/zayan-builds/tempo-timer/releases/latest", "_blank");
   }
 
+  function openPrivacy() {
+    window.open("https://github.com/zayan-builds/tempo-timer/blob/main/PRIVACY_POLICY.md", "_blank");
+  }
+
   async function handleExport() {
     if (solves.length === 0) return;
     const json = exportSolves(solves);
     const date = new Date().toISOString().slice(0, 10);
-    const result = await downloadJson(json, `tempo-history-${date}.json`);
-    setExportToast(result === "shared" ? "history exported" : "history saved");
-    setTimeout(() => setExportToast(null), 2600);
+    const fileName = `tempo-history-${date}.json`;
+    setExporting(true);
+    const result = await downloadJson(json, fileName);
+    setExporting(false);
+    if (result.kind === "downloads") {
+      showNote({ label: "exported to downloads", detail: fileName });
+    } else if (result.kind === "shared") {
+      showNote({ label: "exported", detail: fileName });
+    } else {
+      showNote({ label: "exported", detail: fileName });
+    }
   }
 
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const text = await file.text();
+      const text = await readFileText(file);
       const { solves: parsed, errors } = parseImport(text);
       if (parsed.length === 0) {
         const msg = errors.length > 0 ? errors[0] : "no valid solves found";
-        setImportToast(msg);
-        setTimeout(() => setImportToast(null), 3000);
+        showNote({ label: msg });
         return;
       }
       const { imported, skipped } = await bulkImport(parsed);
@@ -197,11 +227,9 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
       if (imported > 0) parts.push(`${imported} ${imported === 1 ? "solve" : "solves"} imported`);
       if (skipped > 0) parts.push(`${skipped} skipped (already exist)`);
       if (errors.length > 0) parts.push(`${errors.length} ${errors.length === 1 ? "entry" : "entries"} skipped (invalid)`);
-      setImportToast(parts.join(" · "));
-      setTimeout(() => setImportToast(null), 3000);
+      showNote({ label: parts.join(" · ") });
     } catch {
-      setImportToast("could not read file");
-      setTimeout(() => setImportToast(null), 3000);
+      showNote({ label: "could not read file" });
     }
     e.target.value = "";
   }
@@ -401,7 +429,10 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                           background: "transparent",
                           border: "none",
                           cursor: "pointer",
-                          padding: 0,
+                          padding: "14px 8px",
+                          margin: "-14px -8px",
+                          touchAction: "manipulation",
+                          minHeight: 44,
                         }}
                       >
                         {opt.label}
@@ -440,20 +471,33 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                         onClick={() => { if (!settings.dailyAccent) { void gentleImpact(); update("accent", name); } }}
                         aria-label={name}
                         style={{
-                          width: 18,
-                          height: 18,
-                          borderRadius: "50%",
-                          background: ACCENT_HEX[name],
-                          opacity: settings.dailyAccent ? 0.15 : (settings.accent === name ? 1 : 0.4),
-                          transform: settings.accent === name ? "scale(1.18)" : "scale(1)",
-                          transition: "opacity 200ms ease, transform 200ms ease",
-                          border: settings.accent === name ? "1px solid rgba(245,240,232,0.4)" : "none",
+                          width: 30,
+                          height: 30,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          background: "transparent",
+                          border: "none",
                           cursor: settings.dailyAccent ? "default" : "pointer",
                           padding: 0,
                           flexShrink: 0,
                           touchAction: "manipulation",
                         }}
-                      />
+                      >
+                        <span
+                          style={{
+                            width: 18,
+                            height: 18,
+                            borderRadius: "50%",
+                            background: ACCENT_HEX[name],
+                            opacity: settings.dailyAccent ? 0.15 : (settings.accent === name ? 1 : 0.4),
+                            transform: settings.accent === name ? "scale(1.18)" : "scale(1)",
+                            transition: "opacity 200ms ease, transform 200ms ease",
+                            border: settings.accent === name ? "1px solid rgba(245,240,232,0.4)" : "none",
+                            display: "block",
+                          }}
+                        />
+                      </button>
                     ))}
                   </div>
                   <div style={{ marginTop: 14, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -537,18 +581,43 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                 </p>
                 <Row label="EXPORT HISTORY" rowIndex={6} animTick={animTick} accentHex={accentHex}>
                   <button
-                    onClick={() => { void gentleImpact(); handleExport(); }}
+                    onClick={() => { void gentleImpact(); void handleExport(); }}
                     className="font-mono"
                     style={{
                       color: accentHex, fontSize: 12, letterSpacing: "0.16em",
                       background: "transparent", border: "none", cursor: "pointer",
-                      padding: 0, opacity: solves.length > 0 ? 1 : 0.25,
+                      padding: "14px 10px", margin: "-14px -10px",
+                      opacity: solves.length > 0 ? 1 : 0.25,
                       pointerEvents: solves.length > 0 ? "auto" : "none",
+                      touchAction: "manipulation",
+                      minHeight: 44,
                     }}
                   >
-                    export
+                    {exporting ? "…" : "export"}
                   </button>
                 </Row>
+                <div
+                  className="font-mono"
+                  style={{
+                    overflow: "hidden",
+                    maxHeight: exportNote ? 40 : 0,
+                    opacity: exportNote ? 1 : 0,
+                    transition: "max-height 260ms ease, opacity 220ms ease",
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <span style={{ color: accentHex, fontSize: 9, letterSpacing: "0.16em" }}>
+                    {exportNote?.label ?? ""}
+                  </span>
+                  {exportNote?.detail && (
+                    <span style={{ color: "#F5F0E8", opacity: 0.4, fontSize: 9, letterSpacing: "0.12em" }}>
+                      {exportNote.detail}
+                    </span>
+                  )}
+                </div>
                 <Row label="IMPORT HISTORY" rowIndex={7} animTick={animTick} accentHex={accentHex}>
                   <button
                     onClick={handleImportClick}
@@ -556,12 +625,37 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     style={{
                       color: "#F5F0E8", fontSize: 12, letterSpacing: "0.16em",
                       background: "transparent", border: "none", cursor: "pointer",
-                      padding: 0, opacity: 0.4,
+                      padding: "14px 10px", margin: "-14px -10px",
+                      opacity: 0.55,
+                      touchAction: "manipulation",
+                      minHeight: 44,
                     }}
                   >
                     import
                   </button>
                 </Row>
+                <div
+                  className="font-mono"
+                  style={{
+                    overflow: "hidden",
+                    maxHeight: importNote ? 40 : 0,
+                    opacity: importNote ? 1 : 0,
+                    transition: "max-height 260ms ease, opacity 220ms ease",
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <span style={{ color: accentHex, fontSize: 9, letterSpacing: "0.16em" }}>
+                    {importNote?.label ?? ""}
+                  </span>
+                  {importNote?.detail && (
+                    <span style={{ color: "#F5F0E8", opacity: 0.4, fontSize: 9, letterSpacing: "0.12em" }}>
+                      {importNote.detail}
+                    </span>
+                  )}
+                </div>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -630,7 +724,7 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                     letterSpacing: "0.18em",
                   }}
                 >
-                  v{process.env.NEXT_PUBLIC_APP_VERSION || "0.1.18"}
+                  v{process.env.NEXT_PUBLIC_APP_VERSION || "0.1.19"}
                 </p>
               </div>
 
@@ -651,6 +745,25 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                   }}
                 >
                   check for updates
+                </button>
+
+                <button
+                  onClick={openPrivacy}
+                  className="font-mono"
+                  style={{
+                    color: "#F5F0E8",
+                    opacity: 0.3,
+                    fontSize: 10,
+                    letterSpacing: "0.2em",
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0,
+                    marginLeft: 16,
+                    touchAction: "manipulation",
+                  }}
+                >
+                  privacy policy
                 </button>
               </div>
 
@@ -720,15 +833,15 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
           fontSize: 10,
           letterSpacing: "0.3em",
           pointerEvents: "none",
-          opacity: authToast || importToast || exportToast ? 1 : 0,
-          transform: authToast || importToast || exportToast ? "translateY(0)" : "translateY(8px)",
+          opacity: authToast ? 1 : 0,
+          transform: authToast ? "translateY(0)" : "translateY(8px)",
           transition: "opacity 0.25s ease, transform 0.25s ease",
           textAlign: "center",
           paddingLeft: 24,
           paddingRight: 24,
         }}
       >
-        {authToast || importToast || exportToast}
+        {authToast}
       </div>
     </>
   );

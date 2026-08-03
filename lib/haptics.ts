@@ -47,7 +47,7 @@ export async function gentleImpact(): Promise<void> {
   const native = await getNative();
   if (native) {
     try {
-      await native.Haptics.vibrate({ duration: 4 });
+      await native.Haptics.vibrate({ duration: 8 });
       return;
     } catch {
       /* fall through to web */

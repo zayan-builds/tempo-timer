@@ -38,8 +38,8 @@ button, [role="button"] {
 }
 
 @keyframes tempo-bloom-pulse {
-  0%, 100% { transform: translate(-50%, -50%) scale(0.95); }
-  50%      { transform: translate(-50%, -50%) scale(1.05); }
+  0%, 100% { transform: translate(-50%, -50%) scale(0.97); }
+  50%      { transform: translate(-50%, -50%) scale(1.03); }
 }
 .tempo-bloom-pulse {
   animation: tempo-bloom-pulse 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;

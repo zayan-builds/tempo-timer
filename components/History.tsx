@@ -786,7 +786,7 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
         </div>
       )}
 
-      {/* Undo pill — top-anchored, the whole pill is the undo button */}
+      {/* Undo pill — bottom-anchored above the footer, in the thumb's path */}
       <div
         key={undo ? undo.id : "undo-none"}
         role="button"
@@ -794,10 +794,10 @@ export function History({ open, onClose, solves, onDelete, onClearAll, accentHex
         onClick={handleUndo}
         style={{
           position: "fixed",
-          top: "calc(8vh + 96px)",
+          bottom: 84,
           left: "50%",
           zIndex: 2100,
-          transform: undo ? "translateX(-50%) translateY(0)" : "translateX(-50%) translateY(-20px)",
+          transform: undo ? "translateX(-50%) translateY(0)" : "translateX(-50%) translateY(24px)",
           opacity: undo ? 1 : 0,
           pointerEvents: undo ? "auto" : "none",
           transition: "opacity 240ms ease, transform 240ms cubic-bezier(0.32, 0.72, 0, 1)",

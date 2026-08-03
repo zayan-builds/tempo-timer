@@ -5,21 +5,26 @@ type Props = {
   accentHex: string;
 };
 
-// Intent-calibrated bloom:
-//  idle    — soft ambient presence, barely there
-//  armed   — inviting pulse: "ready, release me"
-//  running — calm and quiet so it never distracts during the solve
-//  stopped — settled acknowledgment, slightly more present than idle
-//  pb      — genuine burst: brightest and biggest, plus an outer halo
+// Intent-calibrated bloom — clearly present, never loud:
+//  idle    — soft ambient presence
+//  armed   — inviting, gentle pulse ("ready, release me")
+//  running — quiet so it never distracts mid-solve
+//  stopped — settled acknowledgment, a touch more present than idle
+//  pb      — the one genuine burst, plus an outer halo
+//
+// Rendered as a layered radial-gradient (no CSS filter blur — filters cause
+// banding and a "cheap" surface on large soft glows). Multiple alpha stops
+// give a smooth, premium falloff that sits behind the timer and never
+// competes with it.
 const config = {
-  idle: { radius: 150, opacity: 0.07 },
-  armed: { radius: 230, opacity: 0.26 },
-  running: { radius: 120, opacity: 0.07 },
-  stopped: { radius: 160, opacity: 0.12 },
-  pb: { radius: 300, opacity: 0.3 },
+  idle: { radius: 170, opacity: 0.14 },
+  armed: { radius: 250, opacity: 0.3 },
+  running: { radius: 140, opacity: 0.09 },
+  stopped: { radius: 190, opacity: 0.18 },
+  pb: { radius: 320, opacity: 0.42 },
 } as const;
 
-const PB_OUTER = { radius: 430, opacity: 0.14 };
+const PB_OUTER = { radius: 460, opacity: 0.1 };
 
 function hexToRgb(hex: string) {
   const h = hex.replace("#", "");
@@ -35,8 +40,7 @@ export function Bloom({ state, accentHex }: Props) {
   const glow = (radius: number) => ({
     width: radius * 2,
     height: radius * 2,
-    background: `radial-gradient(circle, rgba(${r},${g},${b},1) 0%, rgba(${r},${g},${b},0.55) 38%, rgba(${r},${g},${b},0) 72%)`,
-    filter: "blur(50px)",
+    background: `radial-gradient(circle, rgba(${r},${g},${b},0.9) 0%, rgba(${r},${g},${b},0.4) 30%, rgba(${r},${g},${b},0.12) 55%, rgba(${r},${g},${b},0.03) 72%, rgba(${r},${g},${b},0) 78%)`,
   });
 
   return (

@@ -15,19 +15,26 @@ export type ImportResult = {
 
 export function parseImport(raw: string): ImportResult {
   const errors: string[] = [];
+  // Android file managers often persist a UTF-8 BOM, which JSON.parse rejects.
+  // Strip it plus any surrounding whitespace before parsing.
+  const text = (raw || "").replace(/^\uFEFF/, "").trim();
+  if (!text) {
+    return { solves: [], errors: ["file is empty"] };
+  }
+
   let data: unknown;
   try {
-    data = JSON.parse(raw);
+    data = JSON.parse(text);
   } catch {
-    return { solves: [], errors: ["invalid JSON file"] };
+    return { solves: [], errors: ["not a valid tempo JSON file"] };
   }
 
   if (!data || typeof data !== "object") {
-    return { solves: [], errors: ["file does not contain valid tempo data"] };
+    return { solves: [], errors: ["file does not contain tempo data"] };
   }
 
   const obj = data as Record<string, unknown>;
-  const list = Array.isArray(obj.solves) ? obj.solves : (Array.isArray(data) ? data : []);
+  const list = Array.isArray(obj.solves) ? obj.solves : Array.isArray(data) ? data : [];
 
   if (!Array.isArray(list) || list.length === 0) {
     return { solves: [], errors: ["no solves found in file"] };
@@ -60,12 +67,42 @@ export function parseImport(raw: string): ImportResult {
   return { solves, errors };
 }
 
+export async function readFileText(file: File): Promise<string> {
+  if (typeof file.text === "function") {
+    try {
+      return await file.text();
+    } catch {
+      // fall through to FileReader
+    }
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(reader.error || new Error("could not read file"));
+    reader.readAsText(file);
+  });
+}
+
+export type ExportOutcome =
+  | { kind: "downloads"; path?: string }
+  | { kind: "shared" }
+  | { kind: "saved" };
+
 export async function downloadJson(
   json: string,
   filename = `tempo-history.json`,
-): Promise<"shared" | "saved"> {
-  // Native: write to cache, resolve a real file:// URI, then hand it to the
-  // system share sheet. Passing a bare filename breaks Android silently.
+): Promise<ExportOutcome> {
+  // 1) Native: write straight to the public Downloads folder via the custom
+  //    DownloadsPlugin (MediaStore on API 29+, legacy path on 24-28).
+  try {
+    const { Downloads } = await import("@/lib/native-downloads");
+    const res = await Downloads.save({ fileName: filename, data: json });
+    return { kind: "downloads", path: res.path };
+  } catch {
+    // No native bridge (plain web) or plugin unavailable — keep going.
+  }
+
+  // 2) Native fallback: cache + system share sheet.
   try {
     const { Filesystem, Directory, Encoding } = await import("@capacitor/filesystem");
     const path = `tempo/${Date.now()}-${filename}`;
@@ -78,14 +115,16 @@ export async function downloadJson(
         text: "Check out my solve history on Tempo",
         files: [uri],
       });
-      return "shared";
+      return { kind: "shared" };
     } catch {
       // share cancelled/declined — file is still saved in cache
-      return "saved";
+      return { kind: "saved" };
     }
   } catch {
     // Capacitor Filesystem unavailable — fall back to web download
   }
+
+  // 3) Web: anchor download.
   const blob = new Blob([json], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -95,5 +134,5 @@ export async function downloadJson(
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  return "saved";
+  return { kind: "saved" };
 }

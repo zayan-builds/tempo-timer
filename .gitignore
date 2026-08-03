@@ -3,6 +3,7 @@ node_modules
 out
 dist
 *.log
+*.tsbuildinfo
 .DS_Store
 .env*.local
 next-env.d.ts
@@ -24,3 +25,7 @@ android/app/src/main/assets/capacitor.plugins.json
 *.keystore
 !debug.keystore
 tempo-keystore
+
+# Release artifacts (keep local; upload AAB to Play manually)
+tempo-*.apk
+tempo-*.aab

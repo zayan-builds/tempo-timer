@@ -56,7 +56,7 @@ type Statement = {
 };
 
 function fmtDelta(ms: number): string {
-  const s = Math.abs(ms) / 1000;
+  const s = Math.max(Math.abs(ms) / 1000, 0.01);
   return parseFloat(s.toFixed(2)).toString();
 }
 
@@ -222,25 +222,25 @@ const STATEMENTS: Record<string, Record<string, Statement[]>> = {
         id: "ba-d1",
         story: "below-average",
         weight: 1,
-        text: (ctx: ComparisonContext) => `${fmtDelta(ctx.timeMs - ctx.profile.mean)}s above your average. the cube has off days.`,
+        text: (ctx: ComparisonContext) => `${fmtDelta(Math.abs(ctx.timeMs - ctx.profile.mean))}s above your average. the cube has off days.`,
       },
       {
         id: "ba-d2",
         story: "below-average",
         weight: 1,
-        text: (ctx: ComparisonContext) => `a little slower than your norm — ${fmtDelta(ctx.timeMs - ctx.profile.mean)}s. it happens.`,
+        text: (ctx: ComparisonContext) => `a little slower than your norm — ${fmtDelta(Math.abs(ctx.timeMs - ctx.profile.mean))}s. it happens.`,
       },
       {
         id: "ba-d3",
         story: "below-average",
         weight: 1,
-        text: (ctx: ComparisonContext) => `${fmtDelta(ctx.timeMs - ctx.profile.mean)}s behind your usual pace. the average forgives.`,
+        text: (ctx: ComparisonContext) => `${fmtDelta(Math.abs(ctx.timeMs - ctx.profile.mean))}s behind your usual pace. the average forgives.`,
       },
       {
         id: "ba-d4",
         story: "below-average",
         weight: 1,
-        text: (ctx: ComparisonContext) => `you drifted ${fmtDelta(ctx.timeMs - ctx.profile.mean)}s past your mean. shake it off.`,
+        text: (ctx: ComparisonContext) => `you drifted ${fmtDelta(Math.abs(ctx.timeMs - ctx.profile.mean))}s past your mean. shake it off.`,
       },
       "the average is still yours. one solve doesn't move it.",
       "slow solves teach patience. this was educational.",
@@ -253,25 +253,25 @@ const STATEMENTS: Record<string, Record<string, Statement[]>> = {
         id: "cs-d1",
         story: "consistent",
         weight: 1.1,
-        text: (ctx: ComparisonContext) => `within ${fmtDelta(ctx.timeMs - ctx.profile.mean)}s of your average. metronome energy.`,
+        text: (ctx: ComparisonContext) => `within ${fmtDelta(Math.abs(ctx.timeMs - ctx.profile.mean))}s of your average. metronome energy.`,
       },
       {
         id: "cs-d2",
         story: "consistent",
         weight: 1.1,
-        text: (ctx: ComparisonContext) => `${fmtDelta(ctx.timeMs - ctx.profile.mean)}s from your mean. you're locked in.`,
+        text: (ctx: ComparisonContext) => `${fmtDelta(Math.abs(ctx.timeMs - ctx.profile.mean))}s from your mean. you're locked in.`,
       },
       {
         id: "cs-d3",
         story: "consistent",
         weight: 1.1,
-        text: (ctx: ComparisonContext) => `clocked ${fmtDelta(ctx.timeMs - ctx.profile.mean)}s off your usual. that's control.`,
+        text: (ctx: ComparisonContext) => `clocked ${fmtDelta(Math.abs(ctx.timeMs - ctx.profile.mean))}s off your usual. that's control.`,
       },
       {
         id: "cs-d4",
         story: "consistent",
         weight: 1.1,
-        text: (ctx: ComparisonContext) => `repeatable. ${fmtDelta(ctx.timeMs - ctx.profile.mean)}s of drift. winners are made here.`,
+        text: (ctx: ComparisonContext) => `repeatable. ${fmtDelta(Math.abs(ctx.timeMs - ctx.profile.mean))}s of drift. winners are made here.`,
       },
       "low variance. high consistency. solver's signature.",
       "your times are getting predictable. in the best way.",
@@ -544,6 +544,19 @@ function daysBetween(a: number, b: number): number {
   return Math.round(Math.abs(a - b) / (1000 * 60 * 60 * 24));
 }
 
+// Trimmed rolling average — identical semantics to the on-screen avgOfN
+// (drop the best and worst of the window), so engine statements never
+// contradict the stats the user sees.
+function trimmedAverage(times: number[], n: number): number | null {
+  if (times.length < n) return null;
+  const last = times.slice(-n);
+  const sorted = [...last].sort((a, b) => a - b);
+  const trim = Math.max(1, Math.ceil(n * 0.05));
+  const middle = sorted.slice(trim, sorted.length - trim);
+  if (middle.length === 0) return null;
+  return middle.reduce((a, b) => a + b, 0) / middle.length;
+}
+
 function computeStreak(solves: { timestamp: number }[]): { current: number; longest: number } {
   if (solves.length === 0) return { current: 0, longest: 0 };
   const days = [...new Set(solves.map((s) => startOfDay(s.timestamp)))].sort((a, b) => b - a);
@@ -595,9 +608,9 @@ function detectMilestone(timeMs: number, totalSolves: number, personalBest: numb
     { key: "sub20", test: () => timeMs < 20000 && personalBest >= 20000 },
     { key: "sub30", test: () => timeMs < 30000 && personalBest >= 30000 },
     { key: "sub60", test: () => timeMs < 60000 && personalBest >= 60000 },
-    { key: "100solves", test: () => totalSolves === 100 },
-    { key: "500solves", test: () => totalSolves === 500 },
-    { key: "1000solves", test: () => totalSolves === 1000 },
+    { key: "100solves", test: () => totalSolves >= 100 },
+    { key: "500solves", test: () => totalSolves >= 500 },
+    { key: "1000solves", test: () => totalSolves >= 1000 },
   ];
   const hit = getMilestonesHit();
   for (const m of milestones) {
@@ -629,7 +642,13 @@ function classifyStory(input: StoryInput): Story {
   if (sessionCount >= 3 && timeMs <= Math.min(...sessionTimes)) return { kind: "session-best" };
   if (sessionCount >= 3 && timeMs >= Math.max(...sessionTimes)) return { kind: "session-worst" };
 
-  if (pb > 0 && timeMs < pb * 1.06) return { kind: "near-pb" };
+  // Near-PB window scaled to the solver's own variance, with a floor so it
+  // never becomes unreachable for tightly-consistent cubers:
+  //   nearWindow = max(0.3 * stdDev, 3% of PB)
+  if (pb > 0) {
+    const nearWindow = Math.max(0.3 * profile.stdDev, 0.03 * pb);
+    if (timeMs < pb + nearWindow) return { kind: "near-pb" };
+  }
 
   if (totalSolves <= 4) return { kind: "first-solve" };
 
@@ -663,12 +682,16 @@ export function buildComparisonContext(
   const personalBest = sorted.length > 0 ? Math.min(...sorted.map((s) => s.time_ms)) : Infinity;
   const streak = computeStreak(sorted);
   const profile = computeProfile(sorted);
+  // The solve being evaluated is not in `solves` yet (it is persisted after),
+  // so story/milestone counts must include it or they lag one solve behind.
+  const totalCount = sorted.length + 1;
+  const sortedTimes = sorted.map((s) => s.time_ms);
 
   const now = new Date();
   const hourOfDay = now.getHours();
   const dayOfWeek = now.getDay();
 
-  const justHitMilestone = detectMilestone(timeMs, sorted.length, personalBest);
+  const justHitMilestone = detectMilestone(timeMs, totalCount, personalBest);
 
   const lastSolveTs = sorted.length > 0 ? sorted[sorted.length - 1].timestamp : null;
   const gapDays =
@@ -680,7 +703,7 @@ export function buildComparisonContext(
     personalBest,
     sessionCount,
     sessionTimes,
-    totalSolves: sorted.length,
+    totalSolves: totalCount,
     profile,
     gapDays,
     justHitMilestone,
@@ -691,12 +714,12 @@ export function buildComparisonContext(
     isPB,
     isSessionBest,
     isSessionWorst,
-    ao5: sorted.length >= 5 ? sorted.slice(-5).reduce((a, b) => a + b.time_ms, 0) / 5 : null,
-    ao12: sorted.length >= 12 ? sorted.slice(-12).reduce((a, b) => a + b.time_ms, 0) / 12 : null,
+    ao5: trimmedAverage(sortedTimes, 5),
+    ao12: trimmedAverage(sortedTimes, 12),
     ao5Trend: computeTrend(sorted, 5),
     ao12Trend: computeTrend(sorted, 12),
     sessionCount,
-    totalSolves: sorted.length,
+    totalSolves: totalCount,
     personalBest,
     currentStreakDays: streak.current,
     longestStreakDays: streak.longest,
